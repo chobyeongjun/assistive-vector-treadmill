@@ -4,3 +4,11 @@ __pycache__/
 .DS_Store
 build/
 .pio/
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+docs/paper/build/
