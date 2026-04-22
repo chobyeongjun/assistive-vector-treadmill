@@ -154,6 +154,11 @@ char filename[32] = "LC_00.CSV";
 // 저장 행 카운터 (시리얼 하트비트용) — 전원 끊겨도 몇 행까진 SD에 있는지 확인용
 volatile uint32_t totalRowsLogged = 0;
 
+// ★ 디버그 카운터 — 파이프라인 어디서 막히는지 추적
+volatile uint32_t isrLogGateHits    = 0;  // if (isLogging && tick%3==0) 진입 횟수
+volatile uint32_t isrLogWrites      = 0;  // 실제 logBuffer[] 기록 성공 횟수
+volatile uint32_t isrLogBufFull     = 0;  // 링버퍼 가득참 → 드롭
+
 // A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
 volatile uint16_t syncA7 = 0;
 
@@ -201,16 +206,22 @@ void adcISR() {
     // 매 3틱마다 SD 로그 버퍼에 기록 (333/3 ≈ 111Hz)
     // ★ firmware ISR_Control()와 동일 패턴: 로컬 구조체에 채운 뒤 통째 대입
     if (isLogging && (isrTickCount % LOG_DIVIDER == 0)) {
+        isrLogGateHits++;
+
         LogEntry e;
         e.timestamp_ms = millis();
         e.l_force      = forceLeft_N;
         e.r_force      = forceRight_N;
         e.a7           = syncA7;
 
-        uint32_t nextHead = (logHead + 1) % LOG_BUF_SIZE;
+        uint32_t head     = logHead;
+        uint32_t nextHead = (head + 1) % LOG_BUF_SIZE;
         if (nextHead != logTail) {  // 오버플로 방지
-            logBuffer[logHead] = e;  // 구조체 통째 복사
+            logBuffer[head] = e;   // 구조체 통째 복사
             logHead = nextHead;
+            isrLogWrites++;
+        } else {
+            isrLogBufFull++;
         }
     }
 }
@@ -430,7 +441,21 @@ void loop() {
         Serial.print(forceLeft_N, 1);
         Serial.print(" N  |  R: ");
         Serial.print(forceRight_N, 1);
-        Serial.print(" N  |  rows: ");
+        Serial.print(" N  | isr_tick=");
+        Serial.print(isrTickCount);
+        Serial.print(" gate=");
+        Serial.print(isrLogGateHits);
+        Serial.print(" write=");
+        Serial.print(isrLogWrites);
+        Serial.print(" full=");
+        Serial.print(isrLogBufFull);
+        Serial.print(" head=");
+        Serial.print(logHead);
+        Serial.print(" tail=");
+        Serial.print(logTail);
+        Serial.print(" isLog=");
+        Serial.print(isLogging ? 1 : 0);
+        Serial.print(" rows=");
         Serial.print(totalRowsLogged);
         Serial.print("  |  BLE: ");
         Serial.println(bleStreamEnabled ? "ON" : "OFF");
