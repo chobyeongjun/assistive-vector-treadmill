@@ -428,6 +428,43 @@ void setup() {
     if (sd_ok) Serial.println("[2/4] SD OK");
     else       Serial.println("[2/4] SD FAILED — will still try SD.open anyway");
 
+    // SD 쓰기 sanity check — 카드 자체 문제인지 로직 문제인지 분리
+    {
+        File test = SD.open("BOOT.TXT", FILE_WRITE);
+        if (test) {
+            test.println("boot ok");
+            test.flush();
+            test.close();
+            Serial.println("[2/4] SD write test OK (BOOT.TXT updated)");
+        } else {
+            Serial.println("[2/4] SD write test FAILED — SD 카드/포맷 문제");
+        }
+    }
+
+    // SD 루트의 CSV 파일 리스트 출력 (auto-increment 대상 확인용)
+    {
+        File root = SD.open("/");
+        if (root) {
+            Serial.println("[2/4] SD root files:");
+            int count = 0;
+            while (true) {
+                File entry = root.openNextFile();
+                if (!entry) break;
+                Serial.print("    ");
+                Serial.println(entry.name());
+                entry.close();
+                if (++count > 30) {
+                    Serial.println("    ...(truncated)");
+                    break;
+                }
+            }
+            if (count == 0) Serial.println("    (empty)");
+            root.close();
+        } else {
+            Serial.println("[2/4] SD root open FAILED");
+        }
+    }
+
     // BLE + ISR
     setupBleComm();
     Serial.println("[3/4] BLE Serial ready");
