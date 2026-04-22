@@ -148,6 +148,9 @@ volatile bool isLogging = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
 
+// 저장 행 카운터 (시리얼 하트비트용) — 전원 끊겨도 몇 행까진 SD에 있는지 확인용
+volatile uint32_t totalRowsLogged = 0;
+
 // A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
 volatile uint16_t syncA7 = 0;
 
@@ -282,12 +285,13 @@ void processLogBuffer() {
             dataFile.println(a7_val);
 
             flushCount++;
+            totalRowsLogged++;
         }
     }
 
-    // 100행 또는 500ms마다 flush (전원 차단 시 데이터 손실 최소화)
+    // 10행 또는 100ms마다 flush → 전원 차단 시에도 손실 행 ≤ 100ms 분량
     uint32_t now = millis();
-    if (dataFile && (flushCount >= 100 || (flushCount > 0 && now - lastFlushMs >= 500))) {
+    if (dataFile && (flushCount >= 10 || (flushCount > 0 && now - lastFlushMs >= 100))) {
         dataFile.flush();
         flushCount = 0;
         lastFlushMs = now;
@@ -422,7 +426,9 @@ void loop() {
         Serial.print(forceLeft_N, 1);
         Serial.print(" N  |  R: ");
         Serial.print(forceRight_N, 1);
-        Serial.print(" N  |  BLE: ");
+        Serial.print(" N  |  rows: ");
+        Serial.print(totalRowsLogged);
+        Serial.print("  |  BLE: ");
         Serial.println(bleStreamEnabled ? "ON" : "OFF");
     }
 }
