@@ -148,7 +148,6 @@ volatile bool isLogging = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
 char customFilename[32] = {0};  // GUI에서 지정한 커스텀 파일명 (비어있으면 auto-increment)
-bool sdReady = false;            // SD 초기화 성공 여부
 
 // A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
 volatile uint16_t syncA7 = 0;
@@ -212,11 +211,11 @@ void adcISR() {
 // ================================================================
 
 void startLogging() {
-    if (isLogging) return;  // 중복 시작 방지
-
-    if (!sdReady) {
-        Serial.println("[SD] not ready — cannot start logging");
-        sendBleResponse("LOG_FAIL:SD_NOT_READY");
+    // 이미 로깅 중이면 현재 상태를 GUI에 알리고 종료
+    if (isLogging) {
+        char resp[64];
+        snprintf(resp, sizeof(resp), "LOG_ACTIVE:%s", filename);
+        sendBleResponse(resp);
         return;
     }
 
@@ -231,7 +230,8 @@ void startLogging() {
         // 동일 이름 존재 시 덮어쓰기 방지: _1, _2 … 접미사
         if (SD.exists(filename)) {
             char base[32];
-            strncpy(base, filename, sizeof(base));
+            strncpy(base, filename, sizeof(base) - 1);
+            base[sizeof(base) - 1] = '\0';
             // 확장자 분리
             char* dot = strrchr(base, '.');
             if (dot) *dot = '\0';
@@ -247,6 +247,8 @@ void startLogging() {
         }
     }
 
+    // SD.begin이 실패해도 SD.open은 시도 — Teensy SD는 첫 시도에 실패 후
+    // open에서 복구되는 경우가 있어, sdReady로 사전 차단하지 않는다.
     dataFile = SD.open(filename, FILE_WRITE);
     if (dataFile) {
         dataFile.println("timestamp_ms,L_force_N,R_force_N,a7");
@@ -261,7 +263,8 @@ void startLogging() {
         snprintf(resp, sizeof(resp), "LOG_START:%s", filename);
         sendBleResponse(resp);
     } else {
-        Serial.println("[SD] Failed to open file!");
+        Serial.print("[SD] Failed to open file: ");
+        Serial.println(filename);
         sendBleResponse("LOG_FAIL:SD_ERROR");
     }
 }
@@ -411,13 +414,11 @@ void setup() {
     pinMode(ANALOG_PIN, INPUT);  // A7 sync trigger (펌웨어와 동일)
     Serial.println("  Loadcell pins: L=A16, R=A6, sync=A7");
 
-    // SD 카드 초기화
+    // SD 카드 초기화 (실패해도 이후 open 재시도됨)
     if (!SD.begin(SDCARD_CS_PIN)) {
-        Serial.println("  [!] SD card init failed!");
-        sdReady = false;
+        Serial.println("  [!] SD.begin failed — will retry at open()");
     } else {
         Serial.println("  SD card OK");
-        sdReady = true;
     }
 
     // BLE 초기화
@@ -428,12 +429,12 @@ void setup() {
     Serial.println("  ADC ISR @ 333Hz, BLE TX @ ~47Hz, SD LOG @ 111Hz");
 
     // ★ 부팅 즉시 auto-logging 시작 (auto-increment 파일명: LC_XX.CSV)
+    //   SD.begin 성공 여부와 무관하게 일단 open을 시도한다 (SD 라이브러리가
+    //   첫 begin에선 실패해도 open에서 붙는 경우가 있음).
     //   이후 BLE로 "logname:<name>"이 오면 해당 이름으로 전환되며,
     //   "logstop"으로 중지, "log"로 재개(auto-increment) 가능.
-    if (sdReady) {
-        Serial.println("  Auto-starting log on boot...");
-        startLogging();
-    }
+    Serial.println("  Auto-starting log on boot...");
+    startLogging();
 
     Serial.println("========================================");
     Serial.println("  Ready. BLE cmds: start/stop, log/logstop,");
