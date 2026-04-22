@@ -210,6 +210,8 @@ void adcISR() {
 // ================================================================
 
 void startLogging() {
+    if (isLogging) return;
+
     // 자동 파일명: LC_00.CSV ~ LC_99.CSV
     for (int i = 0; i < 100; i++) {
         snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
@@ -218,9 +220,14 @@ void startLogging() {
 
     dataFile = SD.open(filename, FILE_WRITE);
     if (dataFile) {
+        // ★ 헤더 먼저 쓰고 즉시 flush → 빈 파일이어도 컬럼은 남는다
         dataFile.println("timestamp_ms,L_force_N,R_force_N,a7");
+        dataFile.flush();
+
+        noInterrupts();
         logHead = 0;
         logTail = 0;
+        interrupts();
         isLogging = true;
 
         Serial.print("[SD] Logging started: ");
@@ -256,6 +263,7 @@ void stopLogging() {
 
 void processLogBuffer() {
     static uint16_t flushCount = 0;
+    static uint32_t lastFlushMs = 0;
 
     while (logTail != logHead) {
         uint32_t ts = logBuffer[logTail].timestamp_ms;
@@ -277,10 +285,12 @@ void processLogBuffer() {
         }
     }
 
-    // 100행마다 flush (SD 쓰기 최적화)
-    if (dataFile && flushCount >= 100) {
+    // 100행 또는 500ms마다 flush (전원 차단 시 데이터 손실 최소화)
+    uint32_t now = millis();
+    if (dataFile && (flushCount >= 100 || (flushCount > 0 && now - lastFlushMs >= 500))) {
         dataFile.flush();
         flushCount = 0;
+        lastFlushMs = now;
     }
 }
 
@@ -335,37 +345,45 @@ void setup() {
     Serial.begin(115200);
     delay(500);
 
-    Serial.println("========================================");
-    Serial.println("  Loadcell Monitor - Teensy 4.1");
-    Serial.println("  L/R Compression Force Measurement");
-    Serial.println("========================================");
+    Serial.println("  Loadcell Monitor  (auto-log on boot)");
+    Serial.println("====================================================");
 
     // ADC 설정: 12-bit
     analogReadResolution(12);
 
-    // 로드셀 핀 초기화
+    // [1/4] 핀 초기화
     pinMode(LEFT_LOADCELL_PIN, INPUT);
     pinMode(RIGHT_LOADCELL_PIN, INPUT);
     pinMode(ANALOG_PIN, INPUT);  // A7 sync trigger (펌웨어와 동일)
-    Serial.println("  Loadcell pins: L=A16, R=A6, sync=A7");
+    Serial.println("[1/4] Pins ready (L=A16, R=A6, sync=A7)");
 
-    // SD 카드 초기화
-    if (!SD.begin(SDCARD_CS_PIN)) {
-        Serial.println("  [!] SD card init failed!");
+    // [2/4] SD 카드 초기화
+    bool sdOK = SD.begin(SDCARD_CS_PIN);
+    if (sdOK) {
+        Serial.println("[2/4] SD OK");
     } else {
-        Serial.println("  SD card OK");
+        Serial.println("[2/4] SD FAIL — data will NOT be saved!");
     }
 
-    // BLE 초기화
+    // [3/4] BLE + ADC ISR
     setupBleComm();
+    Serial.println("[3/4] BLE Serial ready");
 
-    // ADC ISR 시작 (333Hz)
     adcTimer.begin(adcISR, ADC_PERIOD_US);
-    Serial.println("  ADC ISR @ 333Hz, BLE TX @ ~47Hz, SD LOG @ 111Hz");
+    Serial.println("[3/4] ADC ISR @333Hz / BLE @47Hz / LOG @111Hz");
 
-    Serial.println("========================================");
-    Serial.println("  Ready. Send 'start' via BLE to begin.");
-    Serial.println("========================================");
+    // [4/4] AUTO-LOG: SD가 살아있으면 부팅 즉시 로깅 시작
+    //   → A7 트리거나 BLE 'log' 명령을 기다리지 않는다.
+    //   → 시간/L/R/A7 컬럼이 즉시 파일에 남고, 데이터는 333/3 ≈ 111Hz로 계속 append.
+    if (sdOK) {
+        Serial.println("[4/4] AUTO-LOG: calling startLogging()...");
+        startLogging();
+        Serial.print(">>> BOOT OK — logging: ");
+        Serial.println(filename);
+    } else {
+        Serial.println("[4/4] AUTO-LOG skipped (SD not ready)");
+    }
+    Serial.println("====================================================");
 }
 
 // ================================================================
