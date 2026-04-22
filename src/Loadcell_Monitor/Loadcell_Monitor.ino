@@ -38,6 +38,12 @@
 #define LEFT_LOADCELL_PIN   A16
 #define RIGHT_LOADCELL_PIN  A6
 
+// Analog trigger (A7 = pin21 on Teensy 4.1) — 펌웨어 Treadmill_main.ino와 동일
+// 외부 트리거 신호로 firmware와 동시에 로깅을 시작하고, 매 행에 a7 값을 기록해
+// 사후(post-hoc) 시간 동기화에 사용한다.
+const int ANALOG_PIN = 21;
+const int TRIGGER_THRESHOLD = 2000;
+
 // ================================================================
 // [2] ADC 변환 상수
 // ================================================================
@@ -130,6 +136,7 @@ struct LogEntry {
     uint32_t timestamp_ms;
     float l_force;
     float r_force;
+    uint16_t a7;  // 펌웨어 sync용 analog trigger 값 (A7)
 };
 
 const uint16_t LOG_BUF_SIZE = 512;
@@ -140,6 +147,9 @@ volatile uint16_t logTail = 0;   // loop()이 읽는 위치
 volatile bool isLogging = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
+
+// A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
+volatile uint16_t syncA7 = 0;
 
 // ================================================================
 // [7] 로드셀 읽기 함수
@@ -189,6 +199,7 @@ void adcISR() {
             logBuffer[logHead].timestamp_ms = millis();
             logBuffer[logHead].l_force = forceLeft_N;
             logBuffer[logHead].r_force = forceRight_N;
+            logBuffer[logHead].a7 = syncA7;
             logHead = next;
         }
     }
@@ -207,7 +218,7 @@ void startLogging() {
 
     dataFile = SD.open(filename, FILE_WRITE);
     if (dataFile) {
-        dataFile.println("timestamp_ms,L_force_N,R_force_N");
+        dataFile.println("timestamp_ms,L_force_N,R_force_N,a7");
         logHead = 0;
         logTail = 0;
         isLogging = true;
@@ -250,6 +261,7 @@ void processLogBuffer() {
         uint32_t ts = logBuffer[logTail].timestamp_ms;
         float lf   = logBuffer[logTail].l_force;
         float rf   = logBuffer[logTail].r_force;
+        uint16_t a7_val = logBuffer[logTail].a7;
         logTail = (logTail + 1) % LOG_BUF_SIZE;
 
         if (dataFile) {
@@ -257,7 +269,9 @@ void processLogBuffer() {
             dataFile.print(",");
             dataFile.print(lf, 3);
             dataFile.print(",");
-            dataFile.println(rf, 3);
+            dataFile.print(rf, 3);
+            dataFile.print(",");
+            dataFile.println(a7_val);
 
             flushCount++;
         }
@@ -332,7 +346,8 @@ void setup() {
     // 로드셀 핀 초기화
     pinMode(LEFT_LOADCELL_PIN, INPUT);
     pinMode(RIGHT_LOADCELL_PIN, INPUT);
-    Serial.println("  Loadcell pins: L=A16, R=A6");
+    pinMode(ANALOG_PIN, INPUT);  // A7 sync trigger (펌웨어와 동일)
+    Serial.println("  Loadcell pins: L=A16, R=A6, sync=A7");
 
     // SD 카드 초기화
     if (!SD.begin(SDCARD_CS_PIN)) {
@@ -360,6 +375,18 @@ void setup() {
 void loop() {
     // BLE 명령 수신 처리
     processBleSerial();
+
+    // ── A7 analog sync trigger (펌웨어 Treadmill_main.ino와 동일 패턴) ──
+    // 외부 트리거 신호로 firmware와 동시 로깅 시작 + 매 행 a7 값 기록(사후 동기화용)
+    int a7 = analogRead(ANALOG_PIN);
+    syncA7 = (uint16_t)a7;
+
+    if (!isLogging && a7 > TRIGGER_THRESHOLD) {
+        Serial.print("[A7] Trigger detected (");
+        Serial.print(a7);
+        Serial.println(") → auto startLogging");
+        startLogging();
+    }
 
     // SD 로그 버퍼 → 파일 쓰기
     if (isLogging || dataFile) {
