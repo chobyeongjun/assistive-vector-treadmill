@@ -139,10 +139,13 @@ struct LogEntry {
     uint16_t a7;  // 펌웨어 sync용 analog trigger 값 (A7)
 };
 
-const uint16_t LOG_BUF_SIZE = 512;
-volatile LogEntry logBuffer[LOG_BUF_SIZE];
-volatile uint16_t logHead = 0;   // ISR이 쓰는 위치
-volatile uint16_t logTail = 0;   // loop()이 읽는 위치
+const uint32_t LOG_BUF_SIZE = 512;
+// ★ firmware Treadmill_main.ino와 동일 패턴:
+//   - 버퍼 자체는 volatile이 아니다 (DMAMEM → DMA-coherent RAM 배치).
+//   - volatile 배열은 멤버별 쓰기가 ARM GCC 최적화에서 사라지는 버그의 원인.
+DMAMEM LogEntry logBuffer[LOG_BUF_SIZE];
+volatile uint32_t logHead = 0;   // ISR이 쓰는 위치
+volatile uint32_t logTail = 0;   // loop()이 읽는 위치
 
 volatile bool isLogging = false;
 File dataFile;
@@ -196,14 +199,18 @@ void adcISR() {
     }
 
     // 매 3틱마다 SD 로그 버퍼에 기록 (333/3 ≈ 111Hz)
+    // ★ firmware ISR_Control()와 동일 패턴: 로컬 구조체에 채운 뒤 통째 대입
     if (isLogging && (isrTickCount % LOG_DIVIDER == 0)) {
-        uint16_t next = (logHead + 1) % LOG_BUF_SIZE;
-        if (next != logTail) {  // 오버플로 방지
-            logBuffer[logHead].timestamp_ms = millis();
-            logBuffer[logHead].l_force = forceLeft_N;
-            logBuffer[logHead].r_force = forceRight_N;
-            logBuffer[logHead].a7 = syncA7;
-            logHead = next;
+        LogEntry e;
+        e.timestamp_ms = millis();
+        e.l_force      = forceLeft_N;
+        e.r_force      = forceRight_N;
+        e.a7           = syncA7;
+
+        uint32_t nextHead = (logHead + 1) % LOG_BUF_SIZE;
+        if (nextHead != logTail) {  // 오버플로 방지
+            logBuffer[logHead] = e;  // 구조체 통째 복사
+            logHead = nextHead;
         }
     }
 }
@@ -269,20 +276,17 @@ void processLogBuffer() {
     static uint32_t lastFlushMs = 0;
 
     while (logTail != logHead) {
-        uint32_t ts = logBuffer[logTail].timestamp_ms;
-        float lf   = logBuffer[logTail].l_force;
-        float rf   = logBuffer[logTail].r_force;
-        uint16_t a7_val = logBuffer[logTail].a7;
+        LogEntry e = logBuffer[logTail];  // 구조체 통째 복사 (firmware 패턴)
         logTail = (logTail + 1) % LOG_BUF_SIZE;
 
         if (dataFile) {
-            dataFile.print(ts);
+            dataFile.print(e.timestamp_ms);
             dataFile.print(",");
-            dataFile.print(lf, 3);
+            dataFile.print(e.l_force, 3);
             dataFile.print(",");
-            dataFile.print(rf, 3);
+            dataFile.print(e.r_force, 3);
             dataFile.print(",");
-            dataFile.println(a7_val);
+            dataFile.println(e.a7);
 
             flushCount++;
             totalRowsLogged++;
