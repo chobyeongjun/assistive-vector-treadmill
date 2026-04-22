@@ -147,6 +147,8 @@ volatile uint16_t logTail = 0;   // loop()이 읽는 위치
 volatile bool isLogging = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
+char customFilename[32] = {0};  // GUI에서 지정한 커스텀 파일명 (비어있으면 auto-increment)
+bool sdReady = false;            // SD 초기화 성공 여부
 
 // A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
 volatile uint16_t syncA7 = 0;
@@ -210,10 +212,39 @@ void adcISR() {
 // ================================================================
 
 void startLogging() {
-    // 자동 파일명: LC_00.CSV ~ LC_99.CSV
-    for (int i = 0; i < 100; i++) {
-        snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
-        if (!SD.exists(filename)) break;
+    if (isLogging) return;  // 중복 시작 방지
+
+    if (!sdReady) {
+        Serial.println("[SD] not ready — cannot start logging");
+        sendBleResponse("LOG_FAIL:SD_NOT_READY");
+        return;
+    }
+
+    // 파일명 결정: customFilename 있으면 그대로, 없으면 LC_00.CSV ~ LC_99.CSV auto-increment
+    if (customFilename[0] != '\0') {
+        strncpy(filename, customFilename, sizeof(filename) - 1);
+        filename[sizeof(filename) - 1] = '\0';
+        // .CSV 확장자 자동 부여
+        if (strstr(filename, ".CSV") == NULL && strstr(filename, ".csv") == NULL) {
+            strncat(filename, ".CSV", sizeof(filename) - strlen(filename) - 1);
+        }
+        // 동일 이름 존재 시 덮어쓰기 방지: _1, _2 … 접미사
+        if (SD.exists(filename)) {
+            char base[32];
+            strncpy(base, filename, sizeof(base));
+            // 확장자 분리
+            char* dot = strrchr(base, '.');
+            if (dot) *dot = '\0';
+            for (int i = 1; i < 100; i++) {
+                snprintf(filename, sizeof(filename), "%s_%d.CSV", base, i);
+                if (!SD.exists(filename)) break;
+            }
+        }
+    } else {
+        for (int i = 0; i < 100; i++) {
+            snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
+            if (!SD.exists(filename)) break;
+        }
     }
 
     dataFile = SD.open(filename, FILE_WRITE);
@@ -307,6 +338,37 @@ void handleBleCommand(String cmd) {
     else if (cmd == "logstop") {
         stopLogging();
     }
+    else if (cmd.startsWith("logname:")) {
+        // GUI에서 커스텀 파일명 지정 + 즉시 새 로그 파일로 전환
+        // 사용법: "logname:trial_A" → "trial_A.CSV"로 저장 (이미 있으면 _1, _2 … 부여)
+        String name = cmd.substring(8);
+        name.trim();
+
+        if (name.length() == 0) {
+            // 빈 문자열 → auto-increment 복귀
+            customFilename[0] = '\0';
+            if (isLogging) { stopLogging(); startLogging(); }
+            sendBleResponse("LOG_NAME_CLEARED");
+            Serial.println("[BLE] Custom filename cleared (auto-increment)");
+        } else if (name.length() >= (int)sizeof(customFilename)) {
+            sendBleResponse("LOG_FAIL:NAME_TOO_LONG");
+            Serial.println("[BLE] Filename too long");
+        } else {
+            if (isLogging) stopLogging();
+            name.toCharArray(customFilename, sizeof(customFilename));
+            startLogging();
+        }
+    }
+    else if (cmd == "status") {
+        // 현재 로깅 상태 쿼리 (GUI 연결 시 동기화용)
+        char resp[64];
+        if (isLogging) {
+            snprintf(resp, sizeof(resp), "LOG_ACTIVE:%s", filename);
+        } else {
+            snprintf(resp, sizeof(resp), "LOG_IDLE");
+        }
+        sendBleResponse(resp);
+    }
     else if (cmd == "tare") {
         // 현재 측정값 + 기존 오프셋 = 새 오프셋 (누적)
         tareOffset_L += forceLeft_N;
@@ -352,8 +414,10 @@ void setup() {
     // SD 카드 초기화
     if (!SD.begin(SDCARD_CS_PIN)) {
         Serial.println("  [!] SD card init failed!");
+        sdReady = false;
     } else {
         Serial.println("  SD card OK");
+        sdReady = true;
     }
 
     // BLE 초기화
@@ -363,8 +427,17 @@ void setup() {
     adcTimer.begin(adcISR, ADC_PERIOD_US);
     Serial.println("  ADC ISR @ 333Hz, BLE TX @ ~47Hz, SD LOG @ 111Hz");
 
+    // ★ 부팅 즉시 auto-logging 시작 (auto-increment 파일명: LC_XX.CSV)
+    //   이후 BLE로 "logname:<name>"이 오면 해당 이름으로 전환되며,
+    //   "logstop"으로 중지, "log"로 재개(auto-increment) 가능.
+    if (sdReady) {
+        Serial.println("  Auto-starting log on boot...");
+        startLogging();
+    }
+
     Serial.println("========================================");
-    Serial.println("  Ready. Send 'start' via BLE to begin.");
+    Serial.println("  Ready. BLE cmds: start/stop, log/logstop,");
+    Serial.println("                  logname:<name>, status, tare");
     Serial.println("========================================");
 }
 

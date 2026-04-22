@@ -23,7 +23,7 @@ import re
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QDoubleSpinBox, QSizePolicy
+    QLabel, QPushButton, QDoubleSpinBox, QSizePolicy, QLineEdit
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QThread, QPointF
 from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush
@@ -49,48 +49,42 @@ N_TO_KG = 1.0 / 9.80665  # N → kgf 변환
 # ================================================================
 
 class LoadcellParser:
-    """BLE 패킷 파싱: "SL2c<L>n<R>n" → (L_force, R_force)"""
+    """BLE 수신 패킷 파싱
+       - 스트림 데이터:  "SL2c<L>n<R>n"             → (L_force, R_force)
+       - 응답 메시지:   "SR:<msg>\\n"                → "<msg>"
+         예) "SR:LOG_START:LC_00.CSV\\n", "SR:TARE_OK:L=3.2,R=1.1\\n"
+    """
+
+    _PATTERN = re.compile(r"SL(\d+)c(-?\d+)n(-?\d+)n|SR:([^\n]*)\n")
 
     def __init__(self):
         self.buffer = ""
 
     def feed(self, data: bytes):
-        """바이트 데이터를 버퍼에 추가하고 파싱된 결과 반환"""
+        """바이트 데이터 추가 후 (loadcell_pairs, response_msgs) 반환"""
         self.buffer += data.decode("utf-8", errors="ignore")
-        results = []
 
-        while True:
-            # "SL" 패킷 찾기
-            idx = self.buffer.find("SL")
-            if idx == -1:
-                # 버퍼가 너무 커지지 않도록 정리
-                if len(self.buffer) > 256:
-                    self.buffer = self.buffer[-64:]
-                break
+        loadcell = []
+        responses = []
+        last_end = 0
 
-            # "SL" 이전 데이터 버림
-            self.buffer = self.buffer[idx:]
+        for m in self._PATTERN.finditer(self.buffer):
+            if m.group(1) is not None:  # SL 패킷
+                l_raw = int(m.group(2))
+                r_raw = int(m.group(3))
+                loadcell.append((l_raw / 100.0, r_raw / 100.0))
+            else:  # SR 응답
+                responses.append(m.group(4))
+            last_end = m.end()
 
-            # 패턴 매칭: "SL2c<int>n<int>n"
-            match = re.match(r"SL(\d+)c(-?\d+)n(-?\d+)n", self.buffer)
-            if match:
-                count = int(match.group(1))
-                l_raw = int(match.group(2))
-                r_raw = int(match.group(3))
+        # 소비된 부분 제거, 미완성 꼬리만 유지
+        self.buffer = self.buffer[last_end:]
 
-                l_force = l_raw / 100.0
-                r_force = r_raw / 100.0
+        # 오버플로 방지
+        if len(self.buffer) > 256:
+            self.buffer = self.buffer[-64:]
 
-                results.append((l_force, r_force))
-                self.buffer = self.buffer[match.end():]
-            else:
-                # 패킷이 아직 불완전하면 대기
-                if len(self.buffer) > 64:
-                    self.buffer = self.buffer[2:]  # "SL" 건너뛰고 다음 탐색
-                else:
-                    break
-
-        return results
+        return loadcell, responses
 
 
 # ================================================================
@@ -100,6 +94,7 @@ class LoadcellParser:
 class BleSignals(QObject):
     data_received = pyqtSignal(float, float)   # (l_force, r_force)
     status_changed = pyqtSignal(str)           # 상태 메시지
+    response_received = pyqtSignal(str)        # 펌웨어 응답 (SR: 메시지)
     connected = pyqtSignal()
     disconnected = pyqtSignal()
 
@@ -174,9 +169,15 @@ class BleWorker(QThread):
             # Notify 구독
             await self.client.start_notify(NUS_TX_UUID, self._notification_handler)
 
-            # "start" 명령 전송
+            # "start" 명령 전송 (BLE 스트림 활성화)
             await self.client.write_gatt_char(
                 NUS_RX_UUID, b"start\n", response=False
+            )
+
+            # 현재 로깅 상태 쿼리 → LOG_ACTIVE:<name> 또는 LOG_IDLE 응답 유발
+            await asyncio.sleep(0.1)
+            await self.client.write_gatt_char(
+                NUS_RX_UUID, b"status\n", response=False
             )
 
             self.signals.status_changed.emit(f"Connected: {target.name}")
@@ -200,9 +201,11 @@ class BleWorker(QThread):
         self.signals.disconnected.emit()
 
     def _notification_handler(self, sender, data: bytearray):
-        results = self.parser.feed(bytes(data))
-        for l_force, r_force in results:
+        loadcell, responses = self.parser.feed(bytes(data))
+        for l_force, r_force in loadcell:
             self.signals.data_received.emit(l_force, r_force)
+        for resp in responses:
+            self.signals.response_received.emit(resp)
 
 
 # ================================================================
@@ -435,6 +438,19 @@ SPIN_STYLE = """
     }
 """
 
+EDIT_STYLE = """
+    QLineEdit {
+        background-color: #16213e;
+        color: white;
+        font-size: 15px;
+        padding: 6px 10px;
+        border: 2px solid #0f3460;
+        border-radius: 8px;
+        selection-background-color: #533483;
+    }
+    QLineEdit:focus { border: 2px solid #533483; }
+"""
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -525,6 +541,35 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(settings)
 
+        # ── 로그 파일 설정 ──
+        log_row = QHBoxLayout()
+
+        lbl_log = QLabel("Log file:")
+        lbl_log.setStyleSheet(
+            "color: #AAA; font-size: 14px; background: transparent;")
+        log_row.addWidget(lbl_log)
+
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("파일명 (비우면 자동 번호, .CSV 자동 부여)")
+        self.name_edit.setStyleSheet(EDIT_STYLE)
+        self.name_edit.returnPressed.connect(self.on_apply_name)
+        self.name_edit.setEnabled(False)
+        log_row.addWidget(self.name_edit, stretch=1)
+
+        self.apply_name_btn = QPushButton("Apply Name")
+        self.apply_name_btn.setStyleSheet(BTN_STYLE)
+        self.apply_name_btn.clicked.connect(self.on_apply_name)
+        self.apply_name_btn.setEnabled(False)
+        log_row.addWidget(self.apply_name_btn)
+
+        self.current_log_label = QLabel("Log: —")
+        self.current_log_label.setStyleSheet(
+            "color: #7FD8BE; font-size: 13px; font-family: 'Courier New';"
+            " background: transparent; padding: 0 8px;")
+        log_row.addWidget(self.current_log_label)
+
+        main_layout.addLayout(log_row)
+
         # ── 중앙: 비교 위젯 ──
         self.comparison = WeightComparisonWidget()
         main_layout.addWidget(self.comparison, stretch=1)
@@ -540,6 +585,7 @@ class MainWindow(QMainWindow):
         self.ble_signals = BleSignals()
         self.ble_signals.data_received.connect(self._on_data)
         self.ble_signals.status_changed.connect(self._on_status)
+        self.ble_signals.response_received.connect(self._on_response)
         self.ble_signals.connected.connect(self._on_connected)
         self.ble_signals.disconnected.connect(self._on_disconnected)
 
@@ -576,15 +622,64 @@ class MainWindow(QMainWindow):
         self.disconnect_btn.setEnabled(True)
         self.tare_btn.setEnabled(True)
         self.log_btn.setEnabled(True)
+        self.name_edit.setEnabled(True)
+        self.apply_name_btn.setEnabled(True)
+        # 실제 로깅 상태는 LOG_ACTIVE/LOG_IDLE 응답 수신 시 _on_response에서 갱신
 
     def _on_disconnected(self):
         self.connect_btn.setEnabled(True)
         self.disconnect_btn.setEnabled(False)
         self.tare_btn.setEnabled(False)
         self.log_btn.setEnabled(False)
+        self.name_edit.setEnabled(False)
+        self.apply_name_btn.setEnabled(False)
         self._is_logging = False
-        self.log_btn.setText("Log Start")
+        self._set_log_btn_state(False)
+        self.current_log_label.setText("Log: —")
         self.comparison.set_data(0.0, 0.0)
+
+    # ── 펌웨어 응답 핸들러 (SR: 메시지) ──
+
+    def _on_response(self, msg: str):
+        """SR:<msg> 응답 처리 — 로깅 상태/파일명 UI 동기화"""
+        if msg.startswith("LOG_START:"):
+            fname = msg[len("LOG_START:"):]
+            self._is_logging = True
+            self._set_log_btn_state(True)
+            self.current_log_label.setText(f"Log: {fname}  ●REC")
+            self.status_label.setText(f"Logging → {fname}")
+        elif msg.startswith("LOG_STOP:"):
+            fname = msg[len("LOG_STOP:"):]
+            self._is_logging = False
+            self._set_log_btn_state(False)
+            self.current_log_label.setText(f"Log: {fname} (stopped)")
+            self.status_label.setText(f"Log stopped: {fname}")
+        elif msg.startswith("LOG_ACTIVE:"):
+            fname = msg[len("LOG_ACTIVE:"):]
+            self._is_logging = True
+            self._set_log_btn_state(True)
+            self.current_log_label.setText(f"Log: {fname}  ●REC")
+        elif msg == "LOG_IDLE":
+            self._is_logging = False
+            self._set_log_btn_state(False)
+            self.current_log_label.setText("Log: (idle)")
+        elif msg.startswith("LOG_FAIL:"):
+            reason = msg[len("LOG_FAIL:"):]
+            self._is_logging = False
+            self._set_log_btn_state(False)
+            self.current_log_label.setText(f"Log FAIL: {reason}")
+            self.status_label.setText(f"Log failed: {reason}")
+        elif msg == "LOG_NAME_CLEARED":
+            self.current_log_label.setText("Log: (auto-increment)")
+        # STREAM_ON/OFF, TARE_OK 는 별도 시각 피드백 없이 무시 (status_label은 BLE 워커가 이미 설정)
+
+    def _set_log_btn_state(self, logging: bool):
+        if logging:
+            self.log_btn.setText("Log Stop")
+            self.log_btn.setStyleSheet(BTN_STYLE.replace("#16213e", "#8b0000"))
+        else:
+            self.log_btn.setText("Log Start")
+            self.log_btn.setStyleSheet(BTN_STYLE)
 
     # ── 버튼 핸들러 ──
 
@@ -598,17 +693,25 @@ class MainWindow(QMainWindow):
     def on_tare(self):
         self.ble_worker.send_command("tare")
 
+    def on_apply_name(self):
+        """파일명 입력창의 내용으로 로그 파일 전환
+           - 내용이 있으면 'logname:<name>' → 펌웨어가 stop→새 파일 start
+           - 비어있으면 'logname:' (빈 값) → auto-increment로 복귀
+        """
+        name = self.name_edit.text().strip()
+        self.ble_worker.send_command(f"logname:{name}")
+
     def on_log_toggle(self):
-        if not self._is_logging:
-            self.ble_worker.send_command("log")
-            self._is_logging = True
-            self.log_btn.setText("Log Stop")
-            self.log_btn.setStyleSheet(BTN_STYLE.replace("#16213e", "#8b0000"))
-        else:
+        # 정지는 logstop, 시작은 파일명 필드가 채워져 있으면 logname:, 아니면 log
+        if self._is_logging:
             self.ble_worker.send_command("logstop")
-            self._is_logging = False
-            self.log_btn.setText("Log Start")
-            self.log_btn.setStyleSheet(BTN_STYLE)
+        else:
+            name = self.name_edit.text().strip()
+            if name:
+                self.ble_worker.send_command(f"logname:{name}")
+            else:
+                self.ble_worker.send_command("log")
+        # UI 상태는 LOG_START/LOG_STOP 응답 수신 시 갱신
 
     def _update_hz(self):
         self.hz_label.setText(f"{self._pkt_count} Hz")
