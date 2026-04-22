@@ -325,6 +325,11 @@ void processLogBuffer() {
 void handleBleCommand(String cmd) {
     cmd.trim();
 
+    // 모든 BLE 수신 명령을 먼저 echo — GUI→펌웨어 도달 여부 즉시 확인용
+    Serial.print("[BLE RX] '");
+    Serial.print(cmd);
+    Serial.println("'");
+
     if (cmd == "start") {
         bleStreamEnabled = true;
         sendBleResponse("STREAM_ON");
@@ -396,50 +401,51 @@ void handleBleCommand(String cmd) {
 // ================================================================
 
 void setup() {
-    // Serial Monitor
     Serial.begin(115200);
-    delay(500);
+    delay(800);  // USB Serial + SD 전원 안정화 대기
 
-    Serial.println("========================================");
-    Serial.println("  Loadcell Monitor - Teensy 4.1");
-    Serial.println("  L/R Compression Force Measurement");
-    Serial.println("========================================");
+    Serial.println();
+    Serial.println("================================================");
+    Serial.println("  Loadcell Monitor  (auto-log on boot)");
+    Serial.println("================================================");
 
-    // ADC 설정: 12-bit
+    // 핀/ADC
     analogReadResolution(12);
-
-    // 로드셀 핀 초기화
     pinMode(LEFT_LOADCELL_PIN, INPUT);
     pinMode(RIGHT_LOADCELL_PIN, INPUT);
-    pinMode(ANALOG_PIN, INPUT);  // A7 sync trigger (펌웨어와 동일)
-    Serial.println("  Loadcell pins: L=A16, R=A6, sync=A7");
+    pinMode(ANALOG_PIN, INPUT);
+    Serial.println("[1/4] Pins ready (L=A16, R=A6, sync=A7)");
 
-    // SD 카드 초기화 (실패해도 이후 open 재시도됨)
-    if (!SD.begin(SDCARD_CS_PIN)) {
-        Serial.println("  [!] SD.begin failed — will retry at open()");
-    } else {
-        Serial.println("  SD card OK");
+    // SD: 최대 3회 재시도
+    bool sd_ok = false;
+    for (int i = 0; i < 3; i++) {
+        if (SD.begin(SDCARD_CS_PIN)) { sd_ok = true; break; }
+        Serial.print("[2/4] SD.begin attempt ");
+        Serial.print(i + 1);
+        Serial.println(" failed — retrying...");
+        delay(300);
     }
+    if (sd_ok) Serial.println("[2/4] SD OK");
+    else       Serial.println("[2/4] SD FAILED — will still try SD.open anyway");
 
-    // BLE 초기화
+    // BLE + ISR
     setupBleComm();
-
-    // ADC ISR 시작 (333Hz)
+    Serial.println("[3/4] BLE Serial ready");
     adcTimer.begin(adcISR, ADC_PERIOD_US);
-    Serial.println("  ADC ISR @ 333Hz, BLE TX @ ~47Hz, SD LOG @ 111Hz");
+    Serial.println("[3/4] ADC ISR @333Hz / BLE @47Hz / LOG @111Hz");
 
-    // ★ 부팅 즉시 auto-logging 시작 (auto-increment 파일명: LC_XX.CSV)
-    //   SD.begin 성공 여부와 무관하게 일단 open을 시도한다 (SD 라이브러리가
-    //   첫 begin에선 실패해도 open에서 붙는 경우가 있음).
-    //   이후 BLE로 "logname:<name>"이 오면 해당 이름으로 전환되며,
-    //   "logstop"으로 중지, "log"로 재개(auto-increment) 가능.
-    Serial.println("  Auto-starting log on boot...");
+    // Auto-log — SD.begin 결과와 무관하게 open 시도
+    Serial.println("[4/4] AUTO-LOG: calling startLogging()...");
     startLogging();
 
-    Serial.println("========================================");
-    Serial.println("  Ready. BLE cmds: start/stop, log/logstop,");
-    Serial.println("                  logname:<name>, status, tare");
-    Serial.println("========================================");
+    // 최종 상태를 명확히 출력
+    if (isLogging) {
+        Serial.print(">>> BOOT OK — logging: ");
+        Serial.println(filename);
+    } else {
+        Serial.println(">>> BOOT FAIL — NOT logging (SD 문제일 가능성)");
+    }
+    Serial.println("================================================");
 }
 
 // ================================================================
