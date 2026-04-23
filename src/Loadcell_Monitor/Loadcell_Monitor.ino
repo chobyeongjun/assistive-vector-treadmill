@@ -1,22 +1,22 @@
 /*
  * ================================================================
- *  Loadcell Monitor Firmware (Teensy 4.1)
+ * Loadcell Monitor Firmware (Teensy 4.1)
  * ================================================================
  *
- *  목적: L/R 로드셀 Compression 힘을 실시간 측정하여 BLE로 전송
+ * 목적: L/R 로드셀 Compression 힘을 실시간 측정하여 BLE로 전송
  *
- *  하드웨어:
- *   - Teensy 4.1 (메인 컨트롤러)
- *   - Arduino Nano 33 BLE (BLE 브릿지)
- *   - 아날로그 로드셀 x2 (Left: A16, Right: A6)
+ * 하드웨어:
+ * - Teensy 4.1 (메인 컨트롤러)
+ * - Arduino Nano 33 BLE (BLE 브릿지)
+ * - 아날로그 로드셀 x2 (Left: A16, Right: A6)
  *
- *  변환 공식:
- *   voltage = ADC_raw * (3.3V / 4096)
- *   Force_N = (voltage * sensitive) + bias
- *   ★ Compression이 양수가 되도록 부호 조정
+ * 변환 공식:
+ * voltage = ADC_raw * (3.3V / 4096)
+ * Force_N = (voltage * sensitive) + bias
+ * ★ Compression이 양수가 되도록 부호 조정
  *
- *  BLE 패킷: "SL2c<L_force*100>n<R_force*100>n"
- *  전송 주기: 50Hz (20ms)
+ * BLE 패킷: "SL2c<L_force*100>n<R_force*100>n"
+ * 전송 주기: 50Hz (20ms)
  *
  * ================================================================
  */
@@ -55,6 +55,7 @@ const float AI_CNT_TO_V = 3.3f / 4096.0f;
 // [3] 로드셀 캘리브레이션 값
 // ================================================================
 // ★ 실제 캘리브레이션 후 여기 값을 업데이트할 것!
+
 // ★ Compression이 양수가 되도록 sensitive 부호를 조정
 //    - 기존: tension 양수 (당길 때 +)
 //    - 변경: compression 양수 (누를 때 +) → sensitive 부호 반전 or bias 조정
@@ -79,6 +80,7 @@ const bool INVERT_FOR_COMPRESSION = true;
 class LowPassFilter {
     float alpha;
     float y_prev;
+
 public:
     LowPassFilter(float cutoff_hz, float sample_fs) {
         float dt = 1.0f / sample_fs;
@@ -100,12 +102,12 @@ public:
 // ================================================================
 
 // ADC 읽기: 3ms (333Hz) - 고속 샘플링으로 LPF 정확도 확보
-const uint32_t ADC_PERIOD_US = 3000;       // ISR 주기: 3ms (333Hz)
-const float    ADC_FS = 333.3f;            // 샘플링 주파수
+const uint32_t ADC_PERIOD_US = 3000;      // ISR 주기: 3ms (333Hz)
+const float    ADC_FS = 333.3f;           // 샘플링 주파수
 
 // BLE 전송: 20ms (50Hz) - BLE NUS 안정 대역폭 내
-const uint8_t  BLE_DIVIDER = 7;            // 333Hz / 7 ≈ 47Hz
-const uint32_t SERIAL_PRINT_MS = 100;      // 시리얼 출력: 100ms (10Hz)
+const uint8_t  BLE_DIVIDER = 7;           // 333Hz / 7 ≈ 47Hz
+const uint32_t SERIAL_PRINT_MS = 100;     // 시리얼 출력: 100ms (10Hz)
 
 // SD 로깅: ISR 매 틱(3ms, 333Hz)마다 기록
 const int SDCARD_CS_PIN = BUILTIN_SDCARD;
@@ -131,6 +133,9 @@ volatile float tareOffset_R = 0.0f;
 IntervalTimer adcTimer;
 volatile uint32_t isrTickCount = 0;
 
+// [추가된 부분] ISR 외부에서 BLE 전송을 처리하기 위한 플래그
+volatile bool flag_sendBLE = false; 
+
 // ── SD 로깅 (링 버퍼) ──
 struct LogEntry {
     uint32_t timestamp_ms;
@@ -139,27 +144,17 @@ struct LogEntry {
     uint16_t a7;  // 펌웨어 sync용 analog trigger 값 (A7)
 };
 
-const uint32_t LOG_BUF_SIZE = 512;
-// ★ firmware Treadmill_main.ino와 동일 패턴:
-//   - 버퍼 자체는 volatile이 아니다 (DMAMEM → DMA-coherent RAM 배치).
-//   - volatile 배열은 멤버별 쓰기가 ARM GCC 최적화에서 사라지는 버그의 원인.
-DMAMEM LogEntry logBuffer[LOG_BUF_SIZE];
-volatile uint32_t logHead = 0;   // ISR이 쓰는 위치
-volatile uint32_t logTail = 0;   // loop()이 읽는 위치
+// [수정된 부분] 간헐적인 SD 쓰기 지연에 대응하기 위해 링 버퍼 크기 대폭 상향 (512 -> 8192)
+const uint16_t LOG_BUF_SIZE = 8192; 
+volatile LogEntry logBuffer[LOG_BUF_SIZE];
+volatile uint16_t logHead = 0;   // ISR이 쓰는 위치
+volatile uint16_t logTail = 0;   // loop()이 읽는 위치
 
 volatile bool isLogging = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
 
-// 저장 행 카운터 (시리얼 하트비트용) — 전원 끊겨도 몇 행까진 SD에 있는지 확인용
-volatile uint32_t totalRowsLogged = 0;
-
-// ★ 디버그 카운터 — 파이프라인 어디서 막히는지 추적
-volatile uint32_t isrLogGateHits    = 0;  // if (isLogging && tick%3==0) 진입 횟수
-volatile uint32_t isrLogWrites      = 0;  // 실제 logBuffer[] 기록 성공 횟수
-volatile uint32_t isrLogBufFull     = 0;  // 링버퍼 가득참 → 드롭
-
-// A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
+// A7 analog trigger
 volatile uint16_t syncA7 = 0;
 
 // ================================================================
@@ -173,7 +168,7 @@ float readLoadcellForceN(int pin, float bias, float sensitive, LowPassFilter& lp
 
     // Compression 양수 변환
     if (INVERT_FOR_COMPRESSION) {
-        F = F;
+        F = F; 
     }
 
     // LPF 적용
@@ -186,10 +181,14 @@ float readLoadcellForceN(int pin, float bias, float sensitive, LowPassFilter& lp
 }
 
 // ================================================================
-// [8] ADC ISR (333Hz) - 고속 읽기 + LPF + 50Hz BLE 전송
+// [8] ADC ISR (333Hz) - 고속 읽기 + LPF + 50Hz BLE 전송 + A7 동기화
 // ================================================================
 
 void adcISR() {
+    // [수정된 부분] 동기화 오차를 없애기 위해 A7 값을 ISR 내부에서 로드셀과 동시에 읽음
+    int a7_raw = analogRead(ANALOG_PIN);
+    syncA7 = (uint16_t)a7_raw;
+
     // 333Hz로 ADC 읽기 + LPF 적용 - tare 오프셋 차감
     forceLeft_N  = readLoadcellForceN(LEFT_LOADCELL_PIN,  LEFT_BIAS,  LEFT_SENSITIVE,  loadcellFilter_L) - tareOffset_L;
     forceRight_N = readLoadcellForceN(RIGHT_LOADCELL_PIN, RIGHT_BIAS, RIGHT_SENSITIVE, loadcellFilter_R) - tareOffset_R;
@@ -198,30 +197,20 @@ void adcISR() {
 
     isrTickCount++;
 
-    // 매 7틱마다 BLE 전송 (333/7 ≈ 47Hz)
+    // 매 7틱마다 BLE 전송 플래그 켬 (333/7 ≈ 47Hz)
     if (isrTickCount % BLE_DIVIDER == 0) {
-        sendLoadcellToBLE(forceLeft_N, forceRight_N);
+        flag_sendBLE = true; 
     }
 
     // 매 3틱마다 SD 로그 버퍼에 기록 (333/3 ≈ 111Hz)
-    // ★ firmware ISR_Control()와 동일 패턴: 로컬 구조체에 채운 뒤 통째 대입
     if (isLogging && (isrTickCount % LOG_DIVIDER == 0)) {
-        isrLogGateHits++;
-
-        LogEntry e;
-        e.timestamp_ms = millis();
-        e.l_force      = forceLeft_N;
-        e.r_force      = forceRight_N;
-        e.a7           = syncA7;
-
-        uint32_t head     = logHead;
-        uint32_t nextHead = (head + 1) % LOG_BUF_SIZE;
-        if (nextHead != logTail) {  // 오버플로 방지
-            logBuffer[head] = e;   // 구조체 통째 복사
-            logHead = nextHead;
-            isrLogWrites++;
-        } else {
-            isrLogBufFull++;
+        uint16_t next = (logHead + 1) % LOG_BUF_SIZE;
+        if (next != logTail) {  // 오버플로 방지
+            logBuffer[logHead].timestamp_ms = millis();
+            logBuffer[logHead].l_force = forceLeft_N;
+            logBuffer[logHead].r_force = forceRight_N;
+            logBuffer[logHead].a7 = syncA7; // 방금 읽은 가장 최신의 A7 값
+            logHead = next;
         }
     }
 }
@@ -286,27 +275,35 @@ void processLogBuffer() {
     static uint16_t flushCount = 0;
     static uint32_t lastFlushMs = 0;
 
-    while (logTail != logHead) {
-        LogEntry e = logBuffer[logTail];  // 구조체 통째 복사 (firmware 패턴)
+    // [수정된 부분] 루프가 한 번 돌 때 최대 50개까지만 기록하도록 제한 (BLE 통신 등 메인루프 먹통 방지)
+    int maxProcessPerLoop = 50; 
+    int processed = 0;
+
+    while (logTail != logHead && processed < maxProcessPerLoop) {
+        uint32_t ts = logBuffer[logTail].timestamp_ms;
+        float lf   = logBuffer[logTail].l_force;
+        float rf   = logBuffer[logTail].r_force;
+        uint16_t a7_val = logBuffer[logTail].a7;
+
         logTail = (logTail + 1) % LOG_BUF_SIZE;
 
         if (dataFile) {
-            dataFile.print(e.timestamp_ms);
+            dataFile.print(ts);
             dataFile.print(",");
-            dataFile.print(e.l_force, 3);
+            dataFile.print(lf, 3);
             dataFile.print(",");
-            dataFile.print(e.r_force, 3);
+            dataFile.print(rf, 3);
             dataFile.print(",");
-            dataFile.println(e.a7);
+            dataFile.println(a7_val);
 
             flushCount++;
-            totalRowsLogged++;
+            processed++;
         }
     }
 
-    // 10행 또는 100ms마다 flush → 전원 차단 시에도 손실 행 ≤ 100ms 분량
+    // 빈도수 대폭 감소 (2000행 또는 5000ms 마다 한 번씩만 flush)
     uint32_t now = millis();
-    if (dataFile && (flushCount >= 10 || (flushCount > 0 && now - lastFlushMs >= 100))) {
+    if (dataFile && (flushCount >= 2000 || (flushCount > 0 && now - lastFlushMs >= 5000))) {
         dataFile.flush();
         flushCount = 0;
         lastFlushMs = now;
@@ -356,7 +353,7 @@ void handleBleCommand(String cmd) {
 }
 
 // ================================================================
-// [10] Setup
+// [11] Setup
 // ================================================================
 
 void setup() {
@@ -373,7 +370,7 @@ void setup() {
     // [1/4] 핀 초기화
     pinMode(LEFT_LOADCELL_PIN, INPUT);
     pinMode(RIGHT_LOADCELL_PIN, INPUT);
-    pinMode(ANALOG_PIN, INPUT);  // A7 sync trigger (펌웨어와 동일)
+    pinMode(ANALOG_PIN, INPUT); // A7 sync trigger
     Serial.println("[1/4] Pins ready (L=A16, R=A6, sync=A7)");
 
     // [2/4] SD 카드 초기화
@@ -391,9 +388,7 @@ void setup() {
     adcTimer.begin(adcISR, ADC_PERIOD_US);
     Serial.println("[3/4] ADC ISR @333Hz / BLE @47Hz / LOG @111Hz");
 
-    // [4/4] AUTO-LOG: SD가 살아있으면 부팅 즉시 로깅 시작
-    //   → A7 트리거나 BLE 'log' 명령을 기다리지 않는다.
-    //   → 시간/L/R/A7 컬럼이 즉시 파일에 남고, 데이터는 333/3 ≈ 111Hz로 계속 append.
+    // [4/4] AUTO-LOG
     if (sdOK) {
         Serial.println("[4/4] AUTO-LOG: calling startLogging()...");
         startLogging();
@@ -406,21 +401,37 @@ void setup() {
 }
 
 // ================================================================
-// [11] Main Loop
+// [12] Main Loop
 // ================================================================
 
 void loop() {
     // BLE 명령 수신 처리
     processBleSerial();
 
-    // ── A7 analog sync trigger (펌웨어 Treadmill_main.ino와 동일 패턴) ──
-    // 외부 트리거 신호로 firmware와 동시 로깅 시작 + 매 행 a7 값 기록(사후 동기화용)
-    int a7 = analogRead(ANALOG_PIN);
-    syncA7 = (uint16_t)a7;
+    // [수정된 부분] 안전하게 플래그를 읽고 복사 (Race Condition 완전 차단)
+    bool do_sendBLE = false;
+    float current_L = 0.0f;
+    float current_R = 0.0f;
 
-    if (!isLogging && a7 > TRIGGER_THRESHOLD) {
+    noInterrupts();
+    if (flag_sendBLE) {
+        do_sendBLE = true;
+        flag_sendBLE = false; // 인터럽트가 꺼진 안전한 상태에서 플래그 내림
+        current_L = forceLeft_N;
+        current_R = forceRight_N;
+    }
+    interrupts();
+
+    // 메인 루프(안전한 영역)에서 BLE 전송 실행
+    if (do_sendBLE) {
+        sendLoadcellToBLE(current_L, current_R); 
+    }
+
+    // ── A7 analog sync trigger ──
+    // [수정된 부분] A7 값은 이제 ISR에서 읽으므로, 여기서는 트리거(임계값 넘었는지)만 체크
+    if (!isLogging && syncA7 > TRIGGER_THRESHOLD) {
         Serial.print("[A7] Trigger detected (");
-        Serial.print(a7);
+        Serial.print(syncA7);
         Serial.println(") → auto startLogging");
         startLogging();
     }
@@ -436,28 +447,11 @@ void loop() {
 
     if (now - lastPrintMs >= SERIAL_PRINT_MS) {
         lastPrintMs = now;
-
         Serial.print("L: ");
         Serial.print(forceLeft_N, 1);
         Serial.print(" N  |  R: ");
         Serial.print(forceRight_N, 1);
-        Serial.print(" N  | isr_tick=");
-        Serial.print(isrTickCount);
-        Serial.print(" gate=");
-        Serial.print(isrLogGateHits);
-        Serial.print(" write=");
-        Serial.print(isrLogWrites);
-        Serial.print(" full=");
-        Serial.print(isrLogBufFull);
-        Serial.print(" head=");
-        Serial.print(logHead);
-        Serial.print(" tail=");
-        Serial.print(logTail);
-        Serial.print(" isLog=");
-        Serial.print(isLogging ? 1 : 0);
-        Serial.print(" rows=");
-        Serial.print(totalRowsLogged);
-        Serial.print("  |  BLE: ");
+        Serial.print(" N  |  BLE: ");
         Serial.println(bleStreamEnabled ? "ON" : "OFF");
     }
 }
