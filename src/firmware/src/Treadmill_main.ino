@@ -34,6 +34,7 @@
 #include <Arduino.h>
 #include <FlexCAN_T4.h>
 #include <SD.h>
+#include <SDTransfer.h>
 #include <SPI.h>
 #include <IntervalTimer.h>
 #include <math.h>
@@ -499,7 +500,8 @@ public:
   enum GaitEvent {
     EVENT_NONE = 0,
     EVENT_HO = 1,
-    EVENT_HS = 2
+    EVENT_HS_CONFIRMED = 3,  // filtered vel ZC로 확정 (stride time 재구성 시점)
+    EVENT_HS_CANDIDATE = 4   // raw gyro ZC 후보 (지연 0, 재구성용 타임스탬프)
   };
 
   enum Phase {
@@ -529,7 +531,6 @@ public:
 
     HO_Angle_Thresh = 2.6f;
     HO_Angvel_Thresh = 40.0f;
-    HS_Ratio = 0.072f;
     Swing_Arming_Ratio = 0.25f;
 
     Angle_Up_Thresh = 15.0f;
@@ -550,6 +551,7 @@ public:
     ready_for_HO = true;
 
     stride_invalid = false;
+    last_hs_zero_crossing = true;  // ★ 초기 Stance는 정상(=1)으로 간주
     gcp_active = false;
     timedOut = false;  // ★ Timeout 플래그 초기화
 
@@ -567,13 +569,20 @@ public:
     prev_ho_gcp = 0.4f;       // ★ 이전 HO GCP 초기값 (보행주기의 ~40%)
     hs_gcp_in_cycle = -1.0f;  // ★ -1 = 아직 HS 미발생
 
-    const float dt = 0.003f;
+    // LPF: IMU 패킷 주기(≈9ms, 111Hz) 기준으로 α 계산 — 기존 3ms 기준일 땐 실제 컷오프가 3배 낮아져 지연↑
+    const float dt = 0.009f;
     const float fc = 9.4f;
     const float rc = 1.0f / (2.0f * 3.1415926f * fc);
     lpf_alpha = dt / (rc + dt);
 
     lpf_initialized = false;
     lpf_prev_val = 0.0f;
+
+    // Raw ZC + 후보 상태 초기화
+    prev_raw_gyro = 0.0f;
+    prev_raw_valid = false;
+    hs_candidate_fired = false;
+    hs_candidate_ms = 0;
 
     ctrl_period_ms = CONTROL_PERIOD_MS;
     last_ctrl_ms = 0;
@@ -627,6 +636,9 @@ public:
     }
   }
 
+  // ★ 마지막 HS가 zero-crossing 경로였는지 (fallback이면 false)
+  bool wasHsByZeroCrossing() const { return last_hs_zero_crossing; }
+
   // ★ HO 발생 시점의 GCP (HS-HS cycle 내부에서 HO가 언제 발생했는지)
   float getHoGcpInCycle() const { return ho_gcp_in_cycle; }
 
@@ -655,6 +667,12 @@ public:
 
     const float vel = applyLPF(gyro_dps);
     last_filt_vel = vel;
+
+    // ── Raw gyro 음→양 ZC (LPF 통과 전 신호로 HS 후보 타이밍 캡처) ──
+    //   prev 업데이트는 gate 이전에 수행해 샘플 손실 방지.
+    const bool raw_zc = prev_raw_valid && (prev_raw_gyro < 0.0f) && (gyro_dps >= 0.0f);
+    prev_raw_gyro = gyro_dps;
+    prev_raw_valid = true;
 
     // ★★★ GCP 계산: 모드에 따라 다른 타임스탬프 사용 ★★★
     if (gcp_active) {
@@ -707,6 +725,10 @@ public:
           angle_return_met = false;
           last_event_time = now_ms;
 
+          // 새 swing 사이클: raw 후보 상태 초기화
+          hs_candidate_fired = false;
+          hs_candidate_ms = 0;
+
           // ★ HO 기준 모드: HO에서 GCP 시작 (현재 미사용)
           if (gcpStartMode == GCP_START_AT_HO) {
             updateStepTime(now_ms);
@@ -734,6 +756,8 @@ public:
           phase = LOADING;
           ref_angle_peak = 0.7f * ref_angle_peak + 0.3f * curr_pushoff_max_ang;
           angle_return_met = true;
+          prev_vel_for_hs = vel;       // LOADING 진입 이전의 zero-crossing 무시
+          loading_entry_time = now_ms; // fallback 타이밍 기준
         }
         break;
 
@@ -742,25 +766,47 @@ public:
         // LOADING → STANCE (Heel Strike 감지)
         // ═══════════════════════════════════════════════════════
         if (!has_HS) {
-          const float threshold = ((curr_swing_max_vel * HS_Ratio));
-          bool cond_vel = (vel < threshold);
+          // ── Raw 후보: raw gyro 음→양 ZC가 발생할 때마다 타임스탬프 갱신 (last-wins) ──
+          //   - 한 cycle에 raw ZC가 여러 번 발생(진동 등)하면 가장 마지막(= filt ZC에 가장 가까운) 값 채택
+          //   - GCP/stride 리셋은 confirmation에서 수행 (여기서는 타임스탬프만 보존)
+          //   - CSV에는 매 발화마다 event=4 1-sample 스파이크 → 여러 ZC 발생 여부를 직접 관찰 가능
+          if (raw_zc) {
+            hs_candidate_fired = true;
+            hs_candidate_ms = now_ms;
+            evt = EVENT_HS_CANDIDATE;
+          }
+
+          bool cond_vel = (prev_vel_for_hs < 0.0f && vel >= 0.0f);  // filtered ZC (음→양)
+
+          // Fallback: zero-crossing 놓친 경우에만 동작.
+          //   Stride time 예측치의 30% 이후부터 norm 조건 허용.
+          const uint32_t fallback_delay_ms =
+              (uint32_t)(avg_step_time * 0.3f * 1000.0f);
+          const uint32_t loading_elapsed = now_ms - loading_entry_time;
           float norm = sqrtf(angle_deg * angle_deg + vel * vel);
-          bool cond_stability = (norm < STABILITY_FALLBACK_VAL);
+          bool cond_stability =
+              (loading_elapsed >= fallback_delay_ms) && (norm < STABILITY_FALLBACK_VAL);
+
           if (cond_vel || cond_stability) {
             if (cond_stability && !cond_vel) stride_invalid = true;
+
+            // ★ HS 인식 경로 기록 (디버그용): zero-crossing=true, fallback=false
+            last_hs_zero_crossing = cond_vel;
 
             // ★ 교대 체크: allowHS가 false면 HS 무시
             if (allowHS) {
               has_HS = true;
-              evt = EVENT_HS;
+              evt = EVENT_HS_CONFIRMED;  // 같은 샘플에 candidate=4가 세팅됐다면 덮어씀
 
-              // Step time 업데이트
-              updateStepTime(now_ms);
+              // Stride time 재구성: raw 후보가 있으면 그 시각을, 없으면 현재 시각(fallback)
+              const uint32_t hs_event_ms = hs_candidate_fired ? hs_candidate_ms : now_ms;
+
+              updateStepTime(hs_event_ms);
               hsCount++;
 
-              // ★ HS 기준 모드: HS에서 GCP 시작
+              // ★ HS 기준 모드: HS에서 GCP 시작 (raw 타이밍 기준)
               if (gcpStartMode == GCP_START_AT_HS) {
-                hs_timestamp = now_ms;
+                hs_timestamp = hs_event_ms;
                 current_gcp = 0.0f;
                 gcp_active = true;
                 // ★ 이전 사이클의 HO GCP 저장 (sine TFF 예측용)
@@ -776,22 +822,36 @@ public:
               }
 
               ref_vel_peak = 0.0f * ref_vel_peak + 1.0f * curr_swing_max_vel;
-              last_event_time = now_ms;
+              last_event_time = now_ms;  // 이벤트 게이트는 실제 확정 시각 기준
 
               phase = STANCE;
               ready_for_HO = true;
               curr_swing_max_vel = 0.0f;
+
+              // 다음 사이클을 위해 후보 상태 리셋
+              hs_candidate_fired = false;
+              hs_candidate_ms = 0;
             }
           }
         }
         break;
     }
 
+    prev_vel_for_hs = vel;  // zero-crossing 판정용 이전 값 갱신
     return evt;
   }
 
 private:
-  float HO_Angle_Thresh, HO_Angvel_Thresh, HS_Ratio, Swing_Arming_Ratio;
+  float HO_Angle_Thresh, HO_Angvel_Thresh, Swing_Arming_Ratio;
+  float prev_vel_for_hs = 0.0f;     // HS zero-crossing 판정용 이전 vel (filtered)
+  uint32_t loading_entry_time = 0;  // LOADING 진입 시각 (fallback 지연 계산용)
+  bool last_hs_zero_crossing = true; // 마지막 HS가 zero-crossing 경로였는지 (fallback이면 false)
+
+  // Raw gyro ZC 기반 후보 감지 (LPF 지연 없이 HS 시점 캡처)
+  float    prev_raw_gyro;
+  bool     prev_raw_valid;
+  bool     hs_candidate_fired;
+  uint32_t hs_candidate_ms;
   float Angle_Up_Thresh, Angle_Down_Thresh;
   float ref_angle_peak, ref_vel_peak;
   float STABILITY_FALLBACK_VAL;
@@ -1260,6 +1320,7 @@ DMAMEM LogEntry logBuffer[RING_BUFFER_SIZE];
 volatile uint32_t logHead = 0, logTail = 0;
 
 volatile bool isLogging = false;
+bool logPausedByGUI = false;  // GUI stop_log → 아날로그 트리거 무시
 File dataFile;
 char filename[32] = "AK60_GCP_00.CSV";  // ★ 32바이트: 커스텀 파일명 + .CSV 수용
 char customFilename[32] = {0};  // ★ GUI에서 지정한 커스텀 파일명 (없으면 auto-increment)
@@ -1762,7 +1823,7 @@ void updateIMUStream() {
           Serial.println("🦵 LEFT HO!");
         }
 
-        if (evt == GaitDetector::EVENT_HS) {
+        if (evt == GaitDetector::EVENT_HS_CONFIRMED) {
           Serial.println("🦶 LEFT HS!");
         }
 
@@ -1785,7 +1846,22 @@ void updateIMUStream() {
         tmp.dy = left_IMU.dist_y;
         tmp.dz = left_IMU.dist_z;
         tmp.batt = left_IMU.battery;
-        tmp.event = lastEvent_L;
+        // event 인코딩:
+        //   Candidate(raw ZC 1-sample 마커): 4 (phase 기반 인코딩보다 우선)
+        //   Swing=2, Loading=3
+        //   Stance: 직전 HS가 zero-crossing이면 1, fallback(norm)이면 0
+        {
+          if (evt == GaitDetector::EVENT_HS_CANDIDATE) {
+            tmp.event = 4;
+          } else {
+            uint8_t pv_L = left_Detector.getPhaseValue();
+            if (pv_L == 0) {  // STANCE
+              tmp.event = left_Detector.wasHsByZeroCrossing() ? 1 : 0;
+            } else {
+              tmp.event = (int)pv_L + 1;  // SWING→2, LOADING→3
+            }
+          }
+        }
         tmp.gcp = left_Detector.getGCP();
         tmp.phase = left_Detector.getPhaseValue();
         tmp.avg_step_time = left_Detector.getAvgStepTime();
@@ -1818,7 +1894,7 @@ void updateIMUStream() {
           Serial.println("🦵 RIGHT HO!");
         }
 
-        if (evt == GaitDetector::EVENT_HS) {
+        if (evt == GaitDetector::EVENT_HS_CONFIRMED) {
           Serial.println("🦶 RIGHT HS!");
         }
 
@@ -1841,7 +1917,22 @@ void updateIMUStream() {
         tmp.dy = right_IMU.dist_y;
         tmp.dz = right_IMU.dist_z;
         tmp.batt = right_IMU.battery;
-        tmp.event = lastEvent_R;
+        // event 인코딩:
+        //   Candidate(raw ZC 1-sample 마커): 4 (phase 기반 인코딩보다 우선)
+        //   Swing=2, Loading=3
+        //   Stance: 직전 HS가 zero-crossing이면 1, fallback(norm)이면 0
+        {
+          if (evt == GaitDetector::EVENT_HS_CANDIDATE) {
+            tmp.event = 4;
+          } else {
+            uint8_t pv_R = right_Detector.getPhaseValue();
+            if (pv_R == 0) {  // STANCE
+              tmp.event = right_Detector.wasHsByZeroCrossing() ? 1 : 0;
+            } else {
+              tmp.event = (int)pv_R + 1;  // SWING→2, LOADING→3
+            }
+          }
+        }
         tmp.gcp = right_Detector.getGCP();
         tmp.phase = right_Detector.getPhaseValue();
         tmp.avg_step_time = right_Detector.getAvgStepTime();
@@ -2943,6 +3034,19 @@ void handleCommand(String cmd) {
     else stopLogging();
     return;
   }
+  // 로깅 중지 전용 (토글 아님 — GUI Files 탭용)
+  if (cmd == "stop_log") {
+    if (isLogging) stopLogging();
+    logPausedByGUI = true;  // 아날로그 트리거 자동시작 차단
+    Serial.println("__LOG_STOPPED__");
+    return;
+  }
+  // GUI 일시정지 해제 (resume_log)
+  if (cmd == "resume_log") {
+    logPausedByGUI = false;
+    Serial.println("__LOG_RESUMED__");
+    return;
+  }
 
   // Force Assist 구간 설정
   if (cmd.startsWith("fo")) {
@@ -3122,6 +3226,9 @@ void handleCommand(String cmd) {
     Serial.println(serialStreamEnabled ? "ON (111Hz)" : "OFF");
     return;
   }
+
+  // SD 파일 전송 명령 (SDTransfer 라이브러리)
+  if (SDTransfer::handleCommand(cmd, isLogging)) return;
 
   Serial.println("Unknown command. Type 'h' for help");
 }
@@ -3676,8 +3783,8 @@ void loop() {
   int a7 = analogRead(ANALOG_PIN);
   syncA7 = (uint16_t)a7;
 
-  if (!isLogging && a7 > TRIGGER_THRESHOLD) {
-    Serial.println("NO SD Card!");
+  if (!isLogging && !logPausedByGUI && a7 > TRIGGER_THRESHOLD) {
+    Serial.println("🎯 Trigger detected → auto-start logging");
     startLogging();
   }
 

@@ -1,22 +1,22 @@
 /*
  * ================================================================
- *  Loadcell Monitor Firmware (Teensy 4.1)
+ * Loadcell Monitor Firmware (Teensy 4.1)
  * ================================================================
  *
- *  목적: L/R 로드셀 Compression 힘을 실시간 측정하여 BLE로 전송
+ * 목적: L/R 로드셀 Compression 힘을 실시간 측정하여 BLE로 전송
  *
- *  하드웨어:
- *   - Teensy 4.1 (메인 컨트롤러)
- *   - Arduino Nano 33 BLE (BLE 브릿지)
- *   - 아날로그 로드셀 x2 (Left: A16, Right: A6)
+ * 하드웨어:
+ * - Teensy 4.1 (메인 컨트롤러)
+ * - Arduino Nano 33 BLE (BLE 브릿지)
+ * - 아날로그 로드셀 x2 (Left: A16, Right: A6)
  *
- *  변환 공식:
- *   voltage = ADC_raw * (3.3V / 4096)
- *   Force_N = (voltage * sensitive) + bias
- *   ★ Compression이 양수가 되도록 부호 조정
+ * 변환 공식:
+ * voltage = ADC_raw * (3.3V / 4096)
+ * Force_N = (voltage * sensitive) + bias
+ * ★ Compression이 양수가 되도록 부호 조정
  *
- *  BLE 패킷: "SL2c<L_force*100>n<R_force*100>n"
- *  전송 주기: 50Hz (20ms)
+ * BLE 패킷: "SL2c<L_force*100>n<R_force*100>n"
+ * 전송 주기: 50Hz (20ms)
  *
  * ================================================================
  */
@@ -55,6 +55,7 @@ const float AI_CNT_TO_V = 3.3f / 4096.0f;
 // [3] 로드셀 캘리브레이션 값
 // ================================================================
 // ★ 실제 캘리브레이션 후 여기 값을 업데이트할 것!
+
 // ★ Compression이 양수가 되도록 sensitive 부호를 조정
 //    - 기존: tension 양수 (당길 때 +)
 //    - 변경: compression 양수 (누를 때 +) → sensitive 부호 반전 or bias 조정
@@ -79,6 +80,7 @@ const bool INVERT_FOR_COMPRESSION = true;
 class LowPassFilter {
     float alpha;
     float y_prev;
+
 public:
     LowPassFilter(float cutoff_hz, float sample_fs) {
         float dt = 1.0f / sample_fs;
@@ -100,12 +102,12 @@ public:
 // ================================================================
 
 // ADC 읽기: 3ms (333Hz) - 고속 샘플링으로 LPF 정확도 확보
-const uint32_t ADC_PERIOD_US = 3000;       // ISR 주기: 3ms (333Hz)
-const float    ADC_FS = 333.3f;            // 샘플링 주파수
+const uint32_t ADC_PERIOD_US = 3000;      // ISR 주기: 3ms (333Hz)
+const float    ADC_FS = 333.3f;           // 샘플링 주파수
 
 // BLE 전송: 20ms (50Hz) - BLE NUS 안정 대역폭 내
-const uint8_t  BLE_DIVIDER = 7;            // 333Hz / 7 ≈ 47Hz
-const uint32_t SERIAL_PRINT_MS = 100;      // 시리얼 출력: 100ms (10Hz)
+const uint8_t  BLE_DIVIDER = 7;           // 333Hz / 7 ≈ 47Hz
+const uint32_t SERIAL_PRINT_MS = 100;     // 시리얼 출력: 100ms (10Hz)
 
 // SD 로깅: ISR 매 틱(3ms, 333Hz)마다 기록
 const int SDCARD_CS_PIN = BUILTIN_SDCARD;
@@ -131,6 +133,9 @@ volatile float tareOffset_R = 0.0f;
 IntervalTimer adcTimer;
 volatile uint32_t isrTickCount = 0;
 
+// [추가된 부분] ISR 외부에서 BLE 전송을 처리하기 위한 플래그
+volatile bool flag_sendBLE = false; 
+
 // ── SD 로깅 (링 버퍼) ──
 struct LogEntry {
     uint32_t timestamp_ms;
@@ -139,7 +144,8 @@ struct LogEntry {
     uint16_t a7;  // 펌웨어 sync용 analog trigger 값 (A7)
 };
 
-const uint16_t LOG_BUF_SIZE = 512;
+// [수정된 부분] 간헐적인 SD 쓰기 지연에 대응하기 위해 링 버퍼 크기 대폭 상향 (512 -> 8192)
+const uint16_t LOG_BUF_SIZE = 8192; 
 volatile LogEntry logBuffer[LOG_BUF_SIZE];
 volatile uint16_t logHead = 0;   // ISR이 쓰는 위치
 volatile uint16_t logTail = 0;   // loop()이 읽는 위치
@@ -147,9 +153,8 @@ volatile uint16_t logTail = 0;   // loop()이 읽는 위치
 volatile bool isLogging = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
-char customFilename[32] = {0};  // GUI에서 지정한 커스텀 파일명 (비어있으면 auto-increment)
 
-// A7 analog trigger (펌웨어와 동일 패턴: loop()에서 읽어 syncA7 갱신 → ISR이 로그 엔트리에 기록)
+// A7 analog trigger
 volatile uint16_t syncA7 = 0;
 
 // ================================================================
@@ -163,7 +168,7 @@ float readLoadcellForceN(int pin, float bias, float sensitive, LowPassFilter& lp
 
     // Compression 양수 변환
     if (INVERT_FOR_COMPRESSION) {
-        F = F;
+        F = F; 
     }
 
     // LPF 적용
@@ -176,10 +181,14 @@ float readLoadcellForceN(int pin, float bias, float sensitive, LowPassFilter& lp
 }
 
 // ================================================================
-// [8] ADC ISR (333Hz) - 고속 읽기 + LPF + 50Hz BLE 전송
+// [8] ADC ISR (333Hz) - 고속 읽기 + LPF + 50Hz BLE 전송 + A7 동기화
 // ================================================================
 
 void adcISR() {
+    // [수정된 부분] 동기화 오차를 없애기 위해 A7 값을 ISR 내부에서 로드셀과 동시에 읽음
+    int a7_raw = analogRead(ANALOG_PIN);
+    syncA7 = (uint16_t)a7_raw;
+
     // 333Hz로 ADC 읽기 + LPF 적용 - tare 오프셋 차감
     forceLeft_N  = readLoadcellForceN(LEFT_LOADCELL_PIN,  LEFT_BIAS,  LEFT_SENSITIVE,  loadcellFilter_L) - tareOffset_L;
     forceRight_N = readLoadcellForceN(RIGHT_LOADCELL_PIN, RIGHT_BIAS, RIGHT_SENSITIVE, loadcellFilter_R) - tareOffset_R;
@@ -188,9 +197,9 @@ void adcISR() {
 
     isrTickCount++;
 
-    // 매 7틱마다 BLE 전송 (333/7 ≈ 47Hz)
+    // 매 7틱마다 BLE 전송 플래그 켬 (333/7 ≈ 47Hz)
     if (isrTickCount % BLE_DIVIDER == 0) {
-        sendLoadcellToBLE(forceLeft_N, forceRight_N);
+        flag_sendBLE = true; 
     }
 
     // 매 3틱마다 SD 로그 버퍼에 기록 (333/3 ≈ 111Hz)
@@ -200,7 +209,7 @@ void adcISR() {
             logBuffer[logHead].timestamp_ms = millis();
             logBuffer[logHead].l_force = forceLeft_N;
             logBuffer[logHead].r_force = forceRight_N;
-            logBuffer[logHead].a7 = syncA7;
+            logBuffer[logHead].a7 = syncA7; // 방금 읽은 가장 최신의 A7 값
             logHead = next;
         }
     }
@@ -211,49 +220,24 @@ void adcISR() {
 // ================================================================
 
 void startLogging() {
-    // 이미 로깅 중이면 현재 상태를 GUI에 알리고 종료
-    if (isLogging) {
-        char resp[64];
-        snprintf(resp, sizeof(resp), "LOG_ACTIVE:%s", filename);
-        sendBleResponse(resp);
-        return;
+    if (isLogging) return;
+
+    // 자동 파일명: LC_00.CSV ~ LC_99.CSV
+    for (int i = 0; i < 100; i++) {
+        snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
+        if (!SD.exists(filename)) break;
     }
 
-    // 파일명 결정: customFilename 있으면 그대로, 없으면 LC_00.CSV ~ LC_99.CSV auto-increment
-    if (customFilename[0] != '\0') {
-        strncpy(filename, customFilename, sizeof(filename) - 1);
-        filename[sizeof(filename) - 1] = '\0';
-        // .CSV 확장자 자동 부여
-        if (strstr(filename, ".CSV") == NULL && strstr(filename, ".csv") == NULL) {
-            strncat(filename, ".CSV", sizeof(filename) - strlen(filename) - 1);
-        }
-        // 동일 이름 존재 시 덮어쓰기 방지: _1, _2 … 접미사
-        if (SD.exists(filename)) {
-            char base[32];
-            strncpy(base, filename, sizeof(base) - 1);
-            base[sizeof(base) - 1] = '\0';
-            // 확장자 분리
-            char* dot = strrchr(base, '.');
-            if (dot) *dot = '\0';
-            for (int i = 1; i < 100; i++) {
-                snprintf(filename, sizeof(filename), "%s_%d.CSV", base, i);
-                if (!SD.exists(filename)) break;
-            }
-        }
-    } else {
-        for (int i = 0; i < 100; i++) {
-            snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
-            if (!SD.exists(filename)) break;
-        }
-    }
-
-    // SD.begin이 실패해도 SD.open은 시도 — Teensy SD는 첫 시도에 실패 후
-    // open에서 복구되는 경우가 있어, sdReady로 사전 차단하지 않는다.
     dataFile = SD.open(filename, FILE_WRITE);
     if (dataFile) {
+        // ★ 헤더 먼저 쓰고 즉시 flush → 빈 파일이어도 컬럼은 남는다
         dataFile.println("timestamp_ms,L_force_N,R_force_N,a7");
+        dataFile.flush();
+
+        noInterrupts();
         logHead = 0;
         logTail = 0;
+        interrupts();
         isLogging = true;
 
         Serial.print("[SD] Logging started: ");
@@ -263,8 +247,7 @@ void startLogging() {
         snprintf(resp, sizeof(resp), "LOG_START:%s", filename);
         sendBleResponse(resp);
     } else {
-        Serial.print("[SD] Failed to open file: ");
-        Serial.println(filename);
+        Serial.println("[SD] Failed to open file!");
         sendBleResponse("LOG_FAIL:SD_ERROR");
     }
 }
@@ -290,12 +273,18 @@ void stopLogging() {
 
 void processLogBuffer() {
     static uint16_t flushCount = 0;
+    static uint32_t lastFlushMs = 0;
 
-    while (logTail != logHead) {
+    // [수정된 부분] 루프가 한 번 돌 때 최대 50개까지만 기록하도록 제한 (BLE 통신 등 메인루프 먹통 방지)
+    int maxProcessPerLoop = 50; 
+    int processed = 0;
+
+    while (logTail != logHead && processed < maxProcessPerLoop) {
         uint32_t ts = logBuffer[logTail].timestamp_ms;
         float lf   = logBuffer[logTail].l_force;
         float rf   = logBuffer[logTail].r_force;
         uint16_t a7_val = logBuffer[logTail].a7;
+
         logTail = (logTail + 1) % LOG_BUF_SIZE;
 
         if (dataFile) {
@@ -308,13 +297,16 @@ void processLogBuffer() {
             dataFile.println(a7_val);
 
             flushCount++;
+            processed++;
         }
     }
 
-    // 100행마다 flush (SD 쓰기 최적화)
-    if (dataFile && flushCount >= 100) {
+    // 빈도수 대폭 감소 (2000행 또는 5000ms 마다 한 번씩만 flush)
+    uint32_t now = millis();
+    if (dataFile && (flushCount >= 2000 || (flushCount > 0 && now - lastFlushMs >= 5000))) {
         dataFile.flush();
         flushCount = 0;
+        lastFlushMs = now;
     }
 }
 
@@ -324,11 +316,6 @@ void processLogBuffer() {
 
 void handleBleCommand(String cmd) {
     cmd.trim();
-
-    // 모든 BLE 수신 명령을 먼저 echo — GUI→펌웨어 도달 여부 즉시 확인용
-    Serial.print("[BLE RX] '");
-    Serial.print(cmd);
-    Serial.println("'");
 
     if (cmd == "start") {
         bleStreamEnabled = true;
@@ -345,37 +332,6 @@ void handleBleCommand(String cmd) {
     }
     else if (cmd == "logstop") {
         stopLogging();
-    }
-    else if (cmd.startsWith("logname:")) {
-        // GUI에서 커스텀 파일명 지정 + 즉시 새 로그 파일로 전환
-        // 사용법: "logname:trial_A" → "trial_A.CSV"로 저장 (이미 있으면 _1, _2 … 부여)
-        String name = cmd.substring(8);
-        name.trim();
-
-        if (name.length() == 0) {
-            // 빈 문자열 → auto-increment 복귀
-            customFilename[0] = '\0';
-            if (isLogging) { stopLogging(); startLogging(); }
-            sendBleResponse("LOG_NAME_CLEARED");
-            Serial.println("[BLE] Custom filename cleared (auto-increment)");
-        } else if (name.length() >= (int)sizeof(customFilename)) {
-            sendBleResponse("LOG_FAIL:NAME_TOO_LONG");
-            Serial.println("[BLE] Filename too long");
-        } else {
-            if (isLogging) stopLogging();
-            name.toCharArray(customFilename, sizeof(customFilename));
-            startLogging();
-        }
-    }
-    else if (cmd == "status") {
-        // 현재 로깅 상태 쿼리 (GUI 연결 시 동기화용)
-        char resp[64];
-        if (isLogging) {
-            snprintf(resp, sizeof(resp), "LOG_ACTIVE:%s", filename);
-        } else {
-            snprintf(resp, sizeof(resp), "LOG_IDLE");
-        }
-        sendBleResponse(resp);
     }
     else if (cmd == "tare") {
         // 현재 측정값 + 기존 오프셋 = 새 오프셋 (누적)
@@ -397,110 +353,85 @@ void handleBleCommand(String cmd) {
 }
 
 // ================================================================
-// [10] Setup
+// [11] Setup
 // ================================================================
 
 void setup() {
+    // Serial Monitor
     Serial.begin(115200);
-    delay(800);  // USB Serial + SD 전원 안정화 대기
+    delay(500);
 
-    Serial.println();
-    Serial.println("================================================");
     Serial.println("  Loadcell Monitor  (auto-log on boot)");
-    Serial.println("================================================");
+    Serial.println("====================================================");
 
-    // 핀/ADC
+    // ADC 설정: 12-bit
     analogReadResolution(12);
+
+    // [1/4] 핀 초기화
     pinMode(LEFT_LOADCELL_PIN, INPUT);
     pinMode(RIGHT_LOADCELL_PIN, INPUT);
-    pinMode(ANALOG_PIN, INPUT);
+    pinMode(ANALOG_PIN, INPUT); // A7 sync trigger
     Serial.println("[1/4] Pins ready (L=A16, R=A6, sync=A7)");
 
-    // SD: 최대 3회 재시도
-    bool sd_ok = false;
-    for (int i = 0; i < 3; i++) {
-        if (SD.begin(SDCARD_CS_PIN)) { sd_ok = true; break; }
-        Serial.print("[2/4] SD.begin attempt ");
-        Serial.print(i + 1);
-        Serial.println(" failed — retrying...");
-        delay(300);
-    }
-    if (sd_ok) Serial.println("[2/4] SD OK");
-    else       Serial.println("[2/4] SD FAILED — will still try SD.open anyway");
-
-    // SD 쓰기 sanity check — 카드 자체 문제인지 로직 문제인지 분리
-    {
-        File test = SD.open("BOOT.TXT", FILE_WRITE);
-        if (test) {
-            test.println("boot ok");
-            test.flush();
-            test.close();
-            Serial.println("[2/4] SD write test OK (BOOT.TXT updated)");
-        } else {
-            Serial.println("[2/4] SD write test FAILED — SD 카드/포맷 문제");
-        }
+    // [2/4] SD 카드 초기화
+    bool sdOK = SD.begin(SDCARD_CS_PIN);
+    if (sdOK) {
+        Serial.println("[2/4] SD OK");
+    } else {
+        Serial.println("[2/4] SD FAIL — data will NOT be saved!");
     }
 
-    // SD 루트의 CSV 파일 리스트 출력 (auto-increment 대상 확인용)
-    {
-        File root = SD.open("/");
-        if (root) {
-            Serial.println("[2/4] SD root files:");
-            int count = 0;
-            while (true) {
-                File entry = root.openNextFile();
-                if (!entry) break;
-                Serial.print("    ");
-                Serial.println(entry.name());
-                entry.close();
-                if (++count > 30) {
-                    Serial.println("    ...(truncated)");
-                    break;
-                }
-            }
-            if (count == 0) Serial.println("    (empty)");
-            root.close();
-        } else {
-            Serial.println("[2/4] SD root open FAILED");
-        }
-    }
-
-    // BLE + ISR
+    // [3/4] BLE + ADC ISR
     setupBleComm();
     Serial.println("[3/4] BLE Serial ready");
+
     adcTimer.begin(adcISR, ADC_PERIOD_US);
     Serial.println("[3/4] ADC ISR @333Hz / BLE @47Hz / LOG @111Hz");
 
-    // Auto-log — SD.begin 결과와 무관하게 open 시도
-    Serial.println("[4/4] AUTO-LOG: calling startLogging()...");
-    startLogging();
-
-    // 최종 상태를 명확히 출력
-    if (isLogging) {
+    // [4/4] AUTO-LOG
+    if (sdOK) {
+        Serial.println("[4/4] AUTO-LOG: calling startLogging()...");
+        startLogging();
         Serial.print(">>> BOOT OK — logging: ");
         Serial.println(filename);
     } else {
-        Serial.println(">>> BOOT FAIL — NOT logging (SD 문제일 가능성)");
+        Serial.println("[4/4] AUTO-LOG skipped (SD not ready)");
     }
-    Serial.println("================================================");
+    Serial.println("====================================================");
 }
 
 // ================================================================
-// [11] Main Loop
+// [12] Main Loop
 // ================================================================
 
 void loop() {
     // BLE 명령 수신 처리
     processBleSerial();
 
-    // ── A7 analog sync trigger (펌웨어 Treadmill_main.ino와 동일 패턴) ──
-    // 외부 트리거 신호로 firmware와 동시 로깅 시작 + 매 행 a7 값 기록(사후 동기화용)
-    int a7 = analogRead(ANALOG_PIN);
-    syncA7 = (uint16_t)a7;
+    // [수정된 부분] 안전하게 플래그를 읽고 복사 (Race Condition 완전 차단)
+    bool do_sendBLE = false;
+    float current_L = 0.0f;
+    float current_R = 0.0f;
 
-    if (!isLogging && a7 > TRIGGER_THRESHOLD) {
+    noInterrupts();
+    if (flag_sendBLE) {
+        do_sendBLE = true;
+        flag_sendBLE = false; // 인터럽트가 꺼진 안전한 상태에서 플래그 내림
+        current_L = forceLeft_N;
+        current_R = forceRight_N;
+    }
+    interrupts();
+
+    // 메인 루프(안전한 영역)에서 BLE 전송 실행
+    if (do_sendBLE) {
+        sendLoadcellToBLE(current_L, current_R); 
+    }
+
+    // ── A7 analog sync trigger ──
+    // [수정된 부분] A7 값은 이제 ISR에서 읽으므로, 여기서는 트리거(임계값 넘었는지)만 체크
+    if (!isLogging && syncA7 > TRIGGER_THRESHOLD) {
         Serial.print("[A7] Trigger detected (");
-        Serial.print(a7);
+        Serial.print(syncA7);
         Serial.println(") → auto startLogging");
         startLogging();
     }
@@ -516,7 +447,6 @@ void loop() {
 
     if (now - lastPrintMs >= SERIAL_PRINT_MS) {
         lastPrintMs = now;
-
         Serial.print("L: ");
         Serial.print(forceLeft_N, 1);
         Serial.print(" N  |  R: ");

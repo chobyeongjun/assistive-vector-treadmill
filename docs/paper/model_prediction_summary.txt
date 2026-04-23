@@ -1,0 +1,37 @@
+==============================================================================
+ 3-link model prediction -- 70 kg subject, Winter 2009 gait
+ Natural swing peak hip flexion  moment: ~24.5 Nm
+ Natural swing peak knee flexion moment: ~14.0 Nm
+ Natural swing peak knee extension moment: ~10.5 Nm
+==============================================================================
+Pos   Direction         F_peak(N)  peak_|tau_hip| (%natHip)  peak_|tau_knee| (%natKneeF)
+------------------------------------------------------------------------------
+HIGH  0deg_horizontal        34.3           16.46 (  67.2%)             2.71 (    19.4%)
+HIGH  0deg_horizontal        48.1           23.04 (  94.0%)             3.79 (    27.1%)
+HIGH  0deg_horizontal        61.8           29.62 ( 120.9%)             4.88 (    34.8%)
+HIGH  30deg_up               34.3           15.61 (  63.7%)             1.29 (     9.2%)
+HIGH  30deg_up               48.1           21.85 (  89.2%)             1.80 (    12.9%)
+HIGH  30deg_up               61.8           28.10 ( 114.7%)             2.31 (    16.5%)
+------------------------------------------------------------------------------
+MID   0deg_horizontal        34.3           19.00 (  77.6%)             5.75 (    41.1%)
+MID   0deg_horizontal        48.1           26.61 ( 108.6%)             8.05 (    57.5%)
+MID   0deg_horizontal        61.8           34.21 ( 139.6%)            10.35 (    74.0%)
+MID   30deg_up               34.3           17.27 (  70.5%)             2.98 (    21.3%)
+MID   30deg_up               48.1           24.18 (  98.7%)             4.17 (    29.8%)
+MID   30deg_up               61.8           31.09 ( 126.9%)             5.36 (    38.3%)
+------------------------------------------------------------------------------
+LOW   0deg_horizontal        34.3           22.26 (  90.8%)             9.23 (    66.0%)
+LOW   0deg_horizontal        48.1           31.16 ( 127.2%)            12.93 (    92.3%)
+LOW   0deg_horizontal        61.8           40.06 ( 163.5%)            16.62 (   118.7%)
+LOW   30deg_up               34.3           19.60 (  80.0%)             5.26 (    37.6%)
+LOW   30deg_up               48.1           27.44 ( 112.0%)             7.37 (    52.6%)
+LOW   30deg_up               61.8           35.28 ( 144.0%)             9.47 (    67.7%)
+------------------------------------------------------------------------------
+
+Interpretation:
+ - HIGH attachment dominated by HIP moment (short knee lever).
+ - LOW attachment dominated by KNEE moment (long knee lever).
+ - 0deg (forward) produces larger knee extension torque than 30deg (up) for
+   the same cable tension; 30deg adds a lifting component at the hip.
+ - 'Partial assist' guideline (20-60% of natural peak) is the characterization
+   sweet spot; values >80% approach replacement rather than modulation.
