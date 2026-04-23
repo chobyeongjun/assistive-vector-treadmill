@@ -159,6 +159,9 @@ class ControlPanel(QWidget):
         # === Feedforward ===
         layout.addWidget(self._create_tff_card())
 
+        # === Experiment Presets ===
+        layout.addWidget(self._create_preset_card())
+
         layout.addStretch()
 
         # === Log (bottom, fixed height) ===
@@ -418,6 +421,34 @@ class ControlPanel(QWidget):
 
         return card
 
+    # ------ Experiment Preset Card ------
+    def _create_preset_card(self) -> QFrame:
+        card = _glass_card()
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(10, 10, 10, 10)
+        cl.setSpacing(4)
+
+        cl.addWidget(_section_label("Experiment Presets"))
+
+        # Preset definitions: (label, preset_number)
+        presets = [
+            ("High 30°", 1), ("High 0°", 2),
+            ("Mid  30°", 3), ("Mid  0°", 4),
+            ("Low  30°", 5), ("Low  0°", 6),
+        ]
+
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        for i, (label, n) in enumerate(presets):
+            btn = QPushButton(label)
+            btn.setObjectName("SmallBtn")
+            btn.setFixedHeight(26)
+            btn.clicked.connect(lambda checked, num=n: self._apply_preset(num))
+            grid.addWidget(btn, i // 2, i % 2)
+        cl.addLayout(grid)
+
+        return card
+
     # ------ Log Card ------
     def _create_log_card(self) -> QFrame:
         card = _glass_card()
@@ -468,6 +499,38 @@ class ControlPanel(QWidget):
         self._send_param("ps", self.pos_start_spin.value() / 100)
         self._send_param("pe", self.pos_end_spin.value() / 100)
         self._send_param("pa", self.amplitude_spin.value())
+
+    def _apply_preset(self, n: int):
+        """Send preset command to Teensy AND update all GUI spinners."""
+        names = {1: "High-30°", 2: "High-0°", 3: "Mid-30°",
+                 4: "Mid-0°",   5: "Low-30°", 6: "Low-0°"}
+
+        # Shared preset values
+        onset_pct   = 60    # %
+        peak_pct    = 72    # %
+        release_pct = 85    # %
+        peak_force  = 50    # N
+        act_ff_pct  = 15    # % (→ 0.15)
+        tff_pct     = 55    # % (→ 0.55)
+        mot_ff_pct  = 50    # % (→ 0.50)
+        belt_cms    = 100   # cm/s (→ 1.0 m/s)
+
+        # 1) Send single preset command to Teensy
+        self.command_requested.emit(f"preset{n}")
+
+        # 2) Update Force param spinners
+        self.onset_spin.setValue(onset_pct)
+        self.peak_gcp_spin.setValue(peak_pct)
+        self.release_spin.setValue(release_pct)
+        self.peak_force_spin.setValue(peak_force)
+
+        # 3) Update Feedforward spinners
+        self.force_ff_spin.setValue(act_ff_pct)
+        self.tff_gain_spin.setValue(tff_pct)
+        self.motion_ff_spin.setValue(mot_ff_pct)
+        self.tff_speed_spin.setValue(belt_cms)
+
+        self.log(f"[OK] Preset {n} ({names.get(n, '')}) loaded")
 
     # === Public Methods (preserved) ===
 

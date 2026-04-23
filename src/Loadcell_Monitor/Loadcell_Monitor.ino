@@ -26,6 +26,7 @@
 #include <Arduino.h>
 #include <IntervalTimer.h>
 #include <SD.h>
+#include <SDTransfer.h>
 #include <SPI.h>
 #include <math.h>
 
@@ -353,6 +354,28 @@ void handleBleCommand(String cmd) {
 }
 
 // ================================================================
+// [10.5] Serial Command Handler (USB — ls/get/del/log/stop_log)
+// ================================================================
+
+void handleSerialCmd(String cmd) {
+    cmd.trim();
+    if (cmd.length() == 0) return;
+
+    if (cmd == "log") {
+        startLogging();
+        return;
+    }
+    if (cmd == "logstop" || cmd == "stop_log") {
+        if (isLogging) stopLogging();
+        Serial.println("__LOG_STOPPED__");
+        return;
+    }
+    if (SDTransfer::handleCommand(cmd, isLogging)) return;
+
+    Serial.print("[LC] Unknown: "); Serial.println(cmd);
+}
+
+// ================================================================
 // [11] Setup
 // ================================================================
 
@@ -405,6 +428,22 @@ void setup() {
 // ================================================================
 
 void loop() {
+    // USB Serial 명령 처리 (non-blocking)
+    static char serialBuf[64];
+    static int  serialBufLen = 0;
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (c == '\n' || c == '\r') {
+            if (serialBufLen > 0) {
+                serialBuf[serialBufLen] = '\0';
+                handleSerialCmd(String(serialBuf));
+                serialBufLen = 0;
+            }
+        } else if (serialBufLen < (int)sizeof(serialBuf) - 1) {
+            serialBuf[serialBufLen++] = c;
+        }
+    }
+
     // BLE 명령 수신 처리
     processBleSerial();
 
