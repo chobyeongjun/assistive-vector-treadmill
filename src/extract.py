@@ -17,15 +17,12 @@ Usage:
   python3 src/extract.py all
   python3 src/extract.py all --delete
   python3 src/extract.py del DATA_00.CSV
-  python3 src/extract.py all --firmware loadcell
-
 Options:
-  --port      <port>  Serial port (default: auto-detect Teensy)
-  --baud      <rate>  Baud rate (default: 115200)
-  --out       <dir>   Local save directory (default: ./data)
-  --firmware  <name>  main | loadcell (default: main)
-  --delete            Delete file from SD after successful download
-  --timeout   <s>     Response timeout in seconds (default: 10)
+  --port     <port>  Serial port (default: auto-detect Teensy)
+  --baud     <rate>  Baud rate (default: 115200)
+  --out      <dir>   Local save directory (default: ./data)
+  --delete           Delete file from SD after successful download
+  --timeout  <s>     Response timeout in seconds (default: 10)
 """
 
 import sys
@@ -65,12 +62,10 @@ def auto_detect_port(list_ports):
 # ──────────────────────────────────────────────────────────────────
 
 class TeensyLink:
-    def __init__(self, port: str, baud: int = BAUD, timeout: float = TIMEOUT,
-                 firmware: str = "main"):
+    def __init__(self, port: str, baud: int = BAUD, timeout: float = TIMEOUT):
         serial, _ = _import_serial()
         self.ser = serial.Serial(port, baud, timeout=0.1)
         self.timeout = timeout
-        self.firmware = firmware
         time.sleep(1.5)
         self._flush()
 
@@ -101,8 +96,8 @@ class TeensyLink:
         return data
 
     def stop_logging(self):
-        cmd = "stop_log" if self.firmware == "main" else "logstop"
-        self._send(cmd)
+        self._send("stop_log")   # Treadmill_main
+        self._send("logstop")    # Loadcell_Monitor (unknown cmd on main = harmless)
         deadline = time.time() + 3
         while time.time() < deadline:
             line = self._readline_timeout()
@@ -219,7 +214,6 @@ def main():
     parser.add_argument("--port")
     parser.add_argument("--baud", type=int, default=BAUD)
     parser.add_argument("--out", default="data")
-    parser.add_argument("--firmware", choices=["main", "loadcell"], default="main")
     parser.add_argument("--delete", action="store_true",
                         help="Delete from SD after download")
     parser.add_argument("--timeout", type=float, default=TIMEOUT)
@@ -230,8 +224,8 @@ def main():
     if not port:
         sys.exit("No serial port found. Specify --port /dev/ttyXXX")
 
-    print(f"[+] {port} @ {args.baud} ({args.firmware})")
-    link = TeensyLink(port, args.baud, args.timeout, args.firmware)
+    print(f"[+] {port} @ {args.baud}")
+    link = TeensyLink(port, args.baud, args.timeout)
     out_dir = Path(args.out)
 
     try:
