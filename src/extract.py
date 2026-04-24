@@ -30,6 +30,24 @@ import argparse
 import time
 from pathlib import Path
 
+
+def pick_folder(title="저장 폴더 선택") -> Path:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        folder = filedialog.askdirectory(title=title)
+        root.destroy()
+        if not folder:
+            sys.exit("폴더 선택 취소됨")
+        return Path(folder)
+    except Exception:
+        # tkinter 없는 환경 (headless) → 터미널 입력
+        folder = input("저장 폴더 경로 입력: ").strip()
+        return Path(folder) if folder else Path("data")
+
 BAUD    = 115200
 TIMEOUT = 10
 
@@ -213,7 +231,8 @@ def main():
     parser.add_argument("filename", nargs="?", help="For get/del")
     parser.add_argument("--port")
     parser.add_argument("--baud", type=int, default=BAUD)
-    parser.add_argument("--out", default="data")
+    parser.add_argument("--out", default=None,
+                        help="저장 폴더 (생략 시 폴더 선택창)")
     parser.add_argument("--delete", action="store_true",
                         help="Delete from SD after download")
     parser.add_argument("--timeout", type=float, default=TIMEOUT)
@@ -226,7 +245,7 @@ def main():
 
     print(f"[+] {port} @ {args.baud}")
     link = TeensyLink(port, args.baud, args.timeout)
-    out_dir = Path(args.out)
+    out_dir = Path(args.out) if args.out else pick_folder()
 
     try:
         if args.action == "ls":
