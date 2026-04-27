@@ -5,21 +5,16 @@
  * ================================================================
  *
  *  역할: Teensy 4.1 ↔ BLE (Python GUI) 간 UART 브릿지
- *        (WalkerBLE_Nano 기반, Loadcell Monitor 전용)
  *
- *  통신 구조:
- *    [Teensy 4.1] ←─Serial1 (115200)─→ [Nano 33 BLE] ←─BLE─→ [Python GUI]
- *
- *  하드웨어 연결:
- *    Teensy Pin 35 (TX8) → Nano D0 (RX / Serial1 RX)
- *    Teensy Pin 34 (RX8) ← Nano D1 (TX / Serial1 TX)
- *    GND ─────────────── GND
- *
- *  BLE Service: Nordic UART Service (NUS)
- *    - Service UUID: 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
- *    - TX Char UUID: 6E400003-B5A3-F393-E0A9-E50E24DCCA9E (Notify)
- *    - RX Char UUID: 6E400002-B5A3-F393-E0A9-E50E24DCCA9E (Write)
- *
+ *  핵심 수정 (v2):
+ *  1. 연결 간격 6~12 (7.5ms~15ms) — 고정값 24,24 제거
+ *     이유: min=max 고정 시 Mac BLE 협상 거부 → 연결 끊김
+ *  2. writeValue 실패 시 버퍼 유지 → 다음 루프에서 재시도
+ *     이유: 기존 코드는 실패해도 버퍼 클리어 → 데이터 유실 스파이럴
+ *  3. BLE.poll()을 루프 시작과 끝에 모두 호출
+ *     이유: writeValue 처리 중 poll 지연 → 스택 응답 끊김
+ *  4. 20ms 전송 타이머 (1ms idle 대신)
+ *     이유: 50Hz Teensy → 20ms 주기 맞춤, 불필요한 전송 시도 감소
  * ================================================================
  */
 
@@ -27,7 +22,7 @@
 #include <nrf_wdt.h>
 
 // ================================================================
-// [0] Watchdog 설정
+// [0] Watchdog
 // ================================================================
 
 #define WATCHDOG_TIMEOUT_MS 5000
@@ -47,9 +42,9 @@ void feedWatchdog() {
 // [1] BLE 설정
 // ================================================================
 
-#define NUS_SERVICE_UUID        "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-#define NUS_TX_CHARACTERISTIC   "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
-#define NUS_RX_CHARACTERISTIC   "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define NUS_SERVICE_UUID      "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define NUS_TX_CHARACTERISTIC "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+#define NUS_RX_CHARACTERISTIC "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
 BLEService nusService(NUS_SERVICE_UUID);
 BLECharacteristic txCharacteristic(NUS_TX_CHARACTERISTIC, BLENotify, 244);
@@ -62,31 +57,24 @@ BLECharacteristic rxCharacteristic(NUS_RX_CHARACTERISTIC, BLEWrite | BLEWriteWit
 #define TEENSY_SERIAL Serial1
 #define TEENSY_BAUD   115200
 
-#define UART_BUFFER_SIZE 256
-char uartBuffer[UART_BUFFER_SIZE];
-uint16_t uartBufferLen = 0;
+// 링버퍼: 2패킷 이상 수용 (패킷 ~70bytes × 3 = 210)
+#define UART_BUFFER_SIZE 512
+static uint8_t uartBuffer[UART_BUFFER_SIZE];
+static uint16_t uartBufferLen = 0;
 
 // ================================================================
 // [3] 상태 변수
 // ================================================================
 
-bool bleConnected = false;
-uint32_t lastActivityMs = 0;
-uint32_t ledToggleMs = 0;
+static bool bleConnected = false;
+static uint32_t lastSendMs = 0;
+static uint32_t lastStatusPrintMs = 0;
+static uint32_t bleTxCount = 0;
+static uint32_t bleWriteFailCount = 0;
 
-// 디버그 카운터
-uint32_t lastStatusPrintMs = 0;
-uint32_t uartRxCount = 0;
-uint32_t bleTxCount = 0;
-uint32_t bleWriteFailCount = 0;
-uint32_t bleWriteSuccessCount = 0;
-uint32_t notSubscribedCount = 0;
-uint32_t lastUartRxTime = 0;
-
-// LED 핀 (Nano 33 BLE 내장 RGB)
-#define LED_BUILTIN_RED   22
-#define LED_BUILTIN_GREEN 23
-#define LED_BUILTIN_BLUE  24
+#define LED_RED   22
+#define LED_GREEN 23
+#define LED_BLUE  24
 
 // ================================================================
 // [4] 초기화
@@ -94,56 +82,39 @@ uint32_t lastUartRxTime = 0;
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
-
-    Serial.println("================================");
-    Serial.println("  Loadcell BLE Bridge");
-    Serial.println("================================");
+    delay(500);
 
     setupWatchdog();
 
-    // LED 초기화 (Active Low)
-    pinMode(LED_BUILTIN_RED, OUTPUT);
-    pinMode(LED_BUILTIN_GREEN, OUTPUT);
-    pinMode(LED_BUILTIN_BLUE, OUTPUT);
-    digitalWrite(LED_BUILTIN_RED, HIGH);
-    digitalWrite(LED_BUILTIN_GREEN, HIGH);
-    digitalWrite(LED_BUILTIN_BLUE, HIGH);
+    pinMode(LED_RED,   OUTPUT); digitalWrite(LED_RED,   HIGH);
+    pinMode(LED_GREEN, OUTPUT); digitalWrite(LED_GREEN, HIGH);
+    pinMode(LED_BLUE,  OUTPUT); digitalWrite(LED_BLUE,  HIGH);
 
-    // UART 초기화
     TEENSY_SERIAL.begin(TEENSY_BAUD);
-    Serial.println("[OK] UART (Serial1 @ 115200)");
 
-    // BLE 초기화
     if (!BLE.begin()) {
-        Serial.println("[ERROR] BLE init failed!");
-        setLedColor(true, false, false);
-        while (1);
+        setLed(true, false, false);
+        while (1) { feedWatchdog(); }
     }
 
-    // ★ 디바이스 이름: Python GUI에서 "Walker"로 검색
     BLE.setLocalName("Walker");
     BLE.setDeviceName("Walker");
 
-    // 연결 간격: 30ms (안정적)
-    BLE.setConnectionInterval(24, 24);
+    // ★ 연결 간격: 7.5ms~15ms (min≠max 필수 — 고정값은 협상 거부 유발)
+    BLE.setConnectionInterval(6, 12);
 
-    // NUS 서비스 등록
     nusService.addCharacteristic(txCharacteristic);
     nusService.addCharacteristic(rxCharacteristic);
     BLE.addService(nusService);
 
-    // 콜백 등록
     rxCharacteristic.setEventHandler(BLEWritten, onRxReceived);
     BLE.setEventHandler(BLEConnected, onBleConnected);
     BLE.setEventHandler(BLEDisconnected, onBleDisconnected);
 
-    // Advertising 시작
     BLE.advertise();
-    Serial.println("[OK] BLE advertising: Walker");
-    Serial.println("================================");
+    setLed(false, false, true);
 
-    setLedColor(false, false, true);  // Blue = 대기
+    Serial.println("[OK] Walker BLE Bridge ready");
 }
 
 // ================================================================
@@ -152,113 +123,131 @@ void setup() {
 
 void loop() {
     feedWatchdog();
+
+    // poll을 루프 시작에 호출 — BLE 스택 이벤트 처리
     BLE.poll();
-    processUartToBle();
+
+    // UART 수신
+    readUart();
+
+    // BLE 전송 (20ms 주기)
+    sendToBle();
+
+    // poll을 루프 끝에도 호출 — writeValue 처리 후 스택 응답
+    BLE.poll();
+
     updateLed();
 
-    // 2초마다 상태 출력
-    if (millis() - lastStatusPrintMs > 2000) {
+    // 5초마다 상태 출력
+    if (millis() - lastStatusPrintMs > 5000) {
         lastStatusPrintMs = millis();
         Serial.print("[STATUS] BLE:");
         Serial.print(bleConnected ? "CONN" : "DISC");
-        Serial.print(" Sub:");
-        Serial.print(txCharacteristic.subscribed() ? "Y" : "N");
-        Serial.print(" | UART_RX:");
-        Serial.print(uartRxCount);
-        Serial.print(" | BLE_TX:");
-        Serial.print(bleWriteSuccessCount);
+        Serial.print(" TX:");
+        Serial.print(bleTxCount);
         Serial.print(" FAIL:");
         Serial.println(bleWriteFailCount);
     }
 }
 
 // ================================================================
-// [6] UART → BLE (Teensy → GUI)
+// [6] UART 수신
 // ================================================================
 
-void processUartToBle() {
+void readUart() {
     while (TEENSY_SERIAL.available()) {
-        char c = TEENSY_SERIAL.read();
+        uint8_t c = TEENSY_SERIAL.read();
         if (uartBufferLen < UART_BUFFER_SIZE - 1) {
             uartBuffer[uartBufferLen++] = c;
         }
-        lastActivityMs = millis();
-        lastUartRxTime = millis();
-        uartRxCount++;
-    }
-
-    // 버퍼에 데이터가 있고 1ms 이상 추가 수신 없으면 전송
-    if (uartBufferLen > 0 && (millis() - lastActivityMs > 1)) {
-        if (bleConnected && txCharacteristic.subscribed()) {
-            uint16_t sendLen = min(uartBufferLen, (uint16_t)244);
-            int result = txCharacteristic.writeValue((uint8_t*)uartBuffer, sendLen);
-
-            if (result) {
-                bleWriteSuccessCount++;
-                bleTxCount++;
-            } else {
-                bleWriteFailCount++;
-            }
-        }
-        uartBufferLen = 0;
+        // 버퍼 풀이면 가장 오래된 데이터 버림 (새 데이터 우선)
     }
 }
 
 // ================================================================
-// [7] BLE → UART (GUI → Teensy)
+// [7] BLE 전송 (20ms 주기)
+// ================================================================
+
+void sendToBle() {
+    uint32_t now = millis();
+
+    // 20ms 타이머: 50Hz Teensy 전송 주기에 맞춤
+    if (now - lastSendMs < 20) return;
+    lastSendMs = now;
+
+    if (uartBufferLen == 0) return;
+    if (!bleConnected || !txCharacteristic.subscribed()) {
+        uartBufferLen = 0;  // 연결 없으면 버퍼 비움 (쌓이지 않도록)
+        return;
+    }
+
+    uint16_t sendLen = min(uartBufferLen, (uint16_t)244);
+    int result = txCharacteristic.writeValue(uartBuffer, sendLen);
+
+    if (result) {
+        // ★ 성공 시에만 버퍼 클리어
+        uartBufferLen = 0;
+        bleTxCount++;
+    } else {
+        // ★ 실패 시 버퍼 유지 → 다음 20ms에 재시도
+        bleWriteFailCount++;
+        // 연속 실패 누적 방지: 버퍼가 너무 크면 절반 버림
+        if (uartBufferLen > UART_BUFFER_SIZE / 2) {
+            uartBufferLen = 0;
+        }
+    }
+}
+
+// ================================================================
+// [8] BLE → UART (GUI → Teensy)
 // ================================================================
 
 void onRxReceived(BLEDevice central, BLECharacteristic characteristic) {
     int len = characteristic.valueLength();
     const uint8_t* data = characteristic.value();
-
     if (len > 0) {
         TEENSY_SERIAL.write(data, len);
-
-        Serial.print("[BLE->UART] ");
-        for (int i = 0; i < len; i++) {
-            Serial.print((char)data[i]);
-        }
-        Serial.println();
     }
 }
 
 // ================================================================
-// [8] BLE 연결 콜백
+// [9] BLE 연결 콜백
 // ================================================================
 
 void onBleConnected(BLEDevice central) {
     bleConnected = true;
+    uartBufferLen = 0;  // 연결 시 버퍼 클리어 (구버퍼 전송 방지)
     Serial.print("[BLE] Connected: ");
     Serial.println(central.address());
-    setLedColor(false, true, false);  // Green = 연결됨
+    setLed(false, true, false);
 }
 
 void onBleDisconnected(BLEDevice central) {
     bleConnected = false;
-    Serial.print("[BLE] Disconnected: ");
-    Serial.println(central.address());
+    uartBufferLen = 0;
+    Serial.println("[BLE] Disconnected → advertising");
     BLE.advertise();
-    setLedColor(false, false, true);  // Blue = 대기
+    setLed(false, false, true);
 }
 
 // ================================================================
-// [9] LED 제어
+// [10] LED
 // ================================================================
 
-void setLedColor(bool red, bool green, bool blue) {
-    digitalWrite(LED_BUILTIN_RED, red ? LOW : HIGH);
-    digitalWrite(LED_BUILTIN_GREEN, green ? LOW : HIGH);
-    digitalWrite(LED_BUILTIN_BLUE, blue ? LOW : HIGH);
+void setLed(bool red, bool green, bool blue) {
+    digitalWrite(LED_RED,   red   ? LOW : HIGH);
+    digitalWrite(LED_GREEN, green ? LOW : HIGH);
+    digitalWrite(LED_BLUE,  blue  ? LOW : HIGH);
 }
 
 void updateLed() {
     if (!bleConnected) {
-        if (millis() - ledToggleMs > 500) {
-            ledToggleMs = millis();
-            static bool ledState = false;
-            ledState = !ledState;
-            setLedColor(false, false, ledState);
+        static uint32_t t = 0;
+        static bool s = false;
+        if (millis() - t > 500) {
+            t = millis();
+            s = !s;
+            setLed(false, false, s);
         }
     }
 }

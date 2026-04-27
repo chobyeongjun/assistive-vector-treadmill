@@ -358,8 +358,7 @@ class PlotTabWidget(QWidget):
     def _init_buffers(self) -> dict:
         keys = [
             'time', 'l_gcp', 'r_gcp', 'l_pitch', 'r_pitch',
-            'l_gyro', 'r_gyro', 'l_pos', 'r_pos', 'l_vel', 'r_vel',
-            'l_curr', 'r_curr', 'l_des_pos', 'r_des_pos',
+            'l_gyro', 'r_gyro',
             'l_des_force', 'r_des_force', 'l_act_force', 'r_act_force'
         ]
         return {k: deque(maxlen=self.BUFFER_SIZE) for k in keys}
@@ -404,23 +403,6 @@ class PlotTabWidget(QWidget):
         self.gyro_plot.add_curve("R Gyro", SinglePlot.COLOR_RIGHT)
         self.tab_widget.addTab(self.gyro_plot, "Gyro")
 
-        self.pos_plot = SinglePlot("Motor Position (deg)", (-500, 500))
-        self.pos_plot.add_curve("L Actual", SinglePlot.COLOR_LEFT)
-        self.pos_plot.add_curve("R Actual", SinglePlot.COLOR_RIGHT)
-        if self._mode == 1:
-            self.pos_plot.add_curve("L Desired", "#34d399", Qt.DashLine)
-            self.pos_plot.add_curve("R Desired", "#a78bfa", Qt.DashLine)
-        self.tab_widget.addTab(self.pos_plot, "Position")
-
-        self.vel_plot = SinglePlot("Motor Velocity (eRPM)", (-20000, 20000))
-        self.vel_plot.add_curve("L Velocity", SinglePlot.COLOR_LEFT)
-        self.vel_plot.add_curve("R Velocity", SinglePlot.COLOR_RIGHT)
-        self.tab_widget.addTab(self.vel_plot, "Velocity")
-
-        self.curr_plot = SinglePlot("Motor Current (A)", (-25, 25))
-        self.curr_plot.add_curve("L Current", SinglePlot.COLOR_LEFT)
-        self.curr_plot.add_curve("R Current", SinglePlot.COLOR_RIGHT)
-        self.tab_widget.addTab(self.curr_plot, "Current")
 
     def set_mode(self, mode: int):
         if mode != self._mode:
@@ -442,14 +424,6 @@ class PlotTabWidget(QWidget):
         b['r_pitch'].append(data.r_pitch)
         b['l_gyro'].append(data.l_gyro_y)
         b['r_gyro'].append(data.r_gyro_y)
-        b['l_pos'].append(data.l_motor_pos)
-        b['r_pos'].append(data.r_motor_pos)
-        b['l_vel'].append(data.l_motor_vel)
-        b['r_vel'].append(data.r_motor_vel)
-        b['l_curr'].append(data.l_motor_curr)
-        b['r_curr'].append(data.r_motor_curr)
-        b['l_des_pos'].append(data.l_des_pos)
-        b['r_des_pos'].append(data.r_des_pos)
         b['l_des_force'].append(data.l_des_force)
         b['r_des_force'].append(data.r_des_force)
         b['l_act_force'].append(data.l_act_force)
@@ -486,30 +460,6 @@ class PlotTabWidget(QWidget):
                 ("R Pitch", time_arr, self._to_array(b['r_pitch'])),
             ])
 
-        elif "Position" in tab_text:
-            updates = [
-                ("L Actual", time_arr, self._to_array(b['l_pos'])),
-                ("R Actual", time_arr, self._to_array(b['r_pos'])),
-            ]
-            if self._mode == 1:
-                updates.extend([
-                    ("L Desired", time_arr, self._to_array(b['l_des_pos'])),
-                    ("R Desired", time_arr, self._to_array(b['r_des_pos'])),
-                ])
-            self.pos_plot.batch_update(updates)
-
-        elif "Velocity" in tab_text:
-            self.vel_plot.batch_update([
-                ("L Velocity", time_arr, self._to_array(b['l_vel'])),
-                ("R Velocity", time_arr, self._to_array(b['r_vel'])),
-            ])
-
-        elif "Current" in tab_text:
-            self.curr_plot.batch_update([
-                ("L Current", time_arr, self._to_array(b['l_curr'])),
-                ("R Current", time_arr, self._to_array(b['r_curr'])),
-            ])
-
         elif "Force" in tab_text:
             if self._mode == 0:
                 self.force_plot.batch_update([
@@ -539,8 +489,7 @@ class PlotTabWidget(QWidget):
         self._sample_count = 0
 
         empty = np.array([], dtype=np.float32)
-        for plot in [self.force_plot, self.imu_plot, self.gyro_plot,
-                     self.pos_plot, self.vel_plot, self.curr_plot]:
+        for plot in [self.force_plot, self.imu_plot, self.gyro_plot]:
             if hasattr(plot, '_curves'):
                 for curve in plot._curves.values():
                     curve.setData(empty, empty)

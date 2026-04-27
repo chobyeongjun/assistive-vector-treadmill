@@ -16,6 +16,7 @@ volatile bool bleStreamEnabled = false;
 
 char bleRxBuffer[128];
 uint8_t bleRxLen = 0;
+uint32_t bleLastRxMs = 0;  // 마지막 BLE 수신 시각 (워치독용)
 
 // ================================================================
 // [2] BLE Serial 초기화
@@ -53,21 +54,16 @@ void sendWalkerDataToBLE(
     float l_gcp, float r_gcp,
     float l_pitch, float r_pitch,
     float l_gyro_y, float r_gyro_y,
-    float l_motor_pos, float r_motor_pos,
-    float l_motor_vel, float r_motor_vel,
-    float l_motor_curr, float r_motor_curr,
-    float l_des_pos, float r_des_pos,
     float l_des_force, float r_des_force,
     float l_act_force, float r_act_force,
     uint32_t mark
 ) {
-    // BLE 스트리밍이 비활성화되어 있으면 전송하지 않음
     if (!bleStreamEnabled) return;
 
-    // ★ 최적화: 모든 데이터를 버퍼에 한 번에 포맷팅
-    // 38개의 개별 print() 호출 → 1개의 snprintf + write
+    // SW11c<d0>n...<d10>n
+    // [0-1] GCP, [2-3] Pitch, [4-5] GyroY, [6-7] DesForce, [8-9] ActForce, [10] Mark
     int len = snprintf(bleTxBuffer, sizeof(bleTxBuffer),
-        "SW%dc%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn",
+        "SW%dc%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn",
         WALKER_DATA_COUNT,
         (int)(l_gcp * 100.0f),        // 0: L_GCP
         (int)(r_gcp * 100.0f),        // 1: R_GCP
@@ -75,49 +71,20 @@ void sendWalkerDataToBLE(
         (int)(r_pitch * 100.0f),      // 3: R_Pitch
         (int)(l_gyro_y * 100.0f),     // 4: L_GyroY
         (int)(r_gyro_y * 100.0f),     // 5: R_GyroY
-        (int)(l_motor_pos * 100.0f),  // 6: L_MotorPos
-        (int)(r_motor_pos * 100.0f),  // 7: R_MotorPos
-        (int)(l_motor_vel / 100.0f),  // 8: L_MotorVel (erpm/100)
-        (int)(r_motor_vel / 100.0f),  // 9: R_MotorVel (erpm/100)
-        (int)(l_motor_curr * 100.0f), // 10: L_MotorCurr
-        (int)(r_motor_curr * 100.0f), // 11: R_MotorCurr
-        (int)(l_des_pos * 100.0f),    // 12: L_DesPos
-        (int)(r_des_pos * 100.0f),    // 13: R_DesPos
-        (int)(l_des_force * 100.0f),  // 14: L_DesForce
-        (int)(r_des_force * 100.0f),  // 15: R_DesForce
-        (int)(l_act_force * 100.0f),  // 16: L_ActForce
-        (int)(r_act_force * 100.0f),  // 17: R_ActForce
-        (int)(mark * 100)             // 18: Mark
+        (int)(l_des_force * 100.0f),  // 6: L_DesForce
+        (int)(r_des_force * 100.0f),  // 7: R_DesForce
+        (int)(l_act_force * 100.0f),  // 8: L_ActForce
+        (int)(r_act_force * 100.0f),  // 9: R_ActForce
+        (int)(mark * 100)             // 10: Mark
     );
 
-    // ★ 단일 write 호출로 전송 (38개 print → 1개 write)
-    // Teensy Serial.write()는 내부적으로 TX 버퍼를 관리하며,
-    // 패킷이 버퍼보다 커도 자동 분할 전송됨 (blocking write)
+    // TX 버퍼 여유가 충분할 때만 전송 — 버퍼 풀 시 블로킹 방지
+    // 블로킹하면 loop()가 멈춰 processBleSerial() 지연 → BLE 명령 처리 늦어짐
     if (len > 0 && len < (int)sizeof(bleTxBuffer)) {
-        BLE_SERIAL.write(bleTxBuffer, len);
-    }
-}
-
-// ================================================================
-// [3-2] GCP 전용 고속 전송 (333Hz)
-// ================================================================
-
-static char bleGcpBuffer[32];
-
-void sendGcpToBLE(float l_gcp, float r_gcp) {
-    // BLE 스트리밍이 비활성화되어 있으면 전송하지 않음
-    if (!bleStreamEnabled) return;
-
-    // ★ GCP 전용 패킷: "SG2c<L>n<R>n"
-    // GUI에서 "SG" 패킷을 받으면 GCP만 빠르게 업데이트
-    int len = snprintf(bleGcpBuffer, sizeof(bleGcpBuffer),
-        "SG2c%dn%dn",
-        (int)(l_gcp * 100.0f),   // L_GCP (0~100+)
-        (int)(r_gcp * 100.0f)    // R_GCP (0~100+)
-    );
-
-    if (len > 0 && len < (int)sizeof(bleGcpBuffer)) {
-        BLE_SERIAL.write(bleGcpBuffer, len);
+        if (BLE_SERIAL.availableForWrite() >= len) {
+            BLE_SERIAL.write(bleTxBuffer, len);
+        }
+        // else: 이 패킷 skip — 다음 20ms에 최신 데이터로 재전송
     }
 }
 
@@ -132,7 +99,9 @@ void sendBleResponse(const char* msg) {
     // GUI에서 "SR:" 프리픽스로 응답 패킷 식별
     int len = snprintf(bleRespBuffer, sizeof(bleRespBuffer), "SR:%s\n", msg);
     if (len > 0 && len < (int)sizeof(bleRespBuffer)) {
-        BLE_SERIAL.write(bleRespBuffer, len);
+        if (BLE_SERIAL.availableForWrite() >= len) {
+            BLE_SERIAL.write(bleRespBuffer, len);
+        }
     }
 }
 
@@ -147,14 +116,15 @@ bool processBleSerial() {
     while (BLE_SERIAL.available()) {
         char ch = (char)BLE_SERIAL.read();
         lastRxMs = millis();
+        bleLastRxMs = lastRxMs;  // 워치독 타이머 갱신
 
         if (ch == '\r' || ch == '\n') {
             if (bleRxLen > 0) {
                 bleRxBuffer[bleRxLen] = '\0';
-
-                // 명령 핸들러 호출 (외부 구현)
-                handleBleCommand(String(bleRxBuffer));
-
+                // 소문자 변환 — handleBleCommand에서 String.toLowerCase() 불필요
+                for (uint8_t i = 0; i < bleRxLen; i++)
+                    bleRxBuffer[i] = tolower((unsigned char)bleRxBuffer[i]);
+                handleBleCommand(bleRxBuffer);
                 bleRxLen = 0;
                 commandProcessed = true;
             }
@@ -171,7 +141,9 @@ bool processBleSerial() {
     // ★ 타임아웃: 50ms (BLE 전송 지연 고려, newline 누락 시 안전망)
     if (bleRxLen > 0 && (millis() - lastRxMs) > 50) {
         bleRxBuffer[bleRxLen] = '\0';
-        handleBleCommand(String(bleRxBuffer));
+        for (uint8_t i = 0; i < bleRxLen; i++)
+            bleRxBuffer[i] = tolower((unsigned char)bleRxBuffer[i]);
+        handleBleCommand(bleRxBuffer);
         bleRxLen = 0;
         commandProcessed = true;
     }

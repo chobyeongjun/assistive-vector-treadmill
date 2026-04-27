@@ -1,5 +1,7 @@
 
 assistive-vector-treadmill
+**Vault**: `~/research-vault/assistive-vector-treadmill/` — 실험/회의/논문 노트는 여기에도 동시 기록
+
 프로젝트 개요
 AK60 모터 케이블 드리븐 워커 × 트레드밀 보행 재활. BLE 트레드밀 제어 + GUI.
 

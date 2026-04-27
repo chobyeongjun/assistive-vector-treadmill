@@ -56,17 +56,18 @@ class BleClientThread(QThread):
     - 사용자가 수동으로 끊을 때만 재연결 중지
     """
 
-    # ★★★ 안전-critical 재연결 설정 (모터 제어 불능 방지)
-    RECONNECT_DELAY_INIT = 0.3    # 0.3초 후 즉시 재시도 (빠른 복구)
-    RECONNECT_DELAY_MAX = 2.0     # 최대 2초 간격 (안전 우선)
+    # 재연결 설정 — 빠른 복구 우선
+    RECONNECT_DELAY_INIT = 0.3    # 0.3초 후 즉시 재시도
+    RECONNECT_DELAY_MAX = 1.0     # 최대 1초 간격 (빠른 재시도)
     RECONNECT_BACKOFF = 1.5       # 백오프 배수
 
     # Watchdog 설정
     WATCHDOG_INTERVAL = 2.0       # 2초마다 연결 상태 확인 (빠른 감지)
-    DATA_TIMEOUT = 5.0            # 5초 데이터 없으면 연결 끊김으로 판단
+    DATA_TIMEOUT = 30.0           # 30초 데이터 없으면 연결 끊김으로 판단
+                                  # (스트리밍 OFF 상태나 실험 사이 잠깐 멈춤에 watchdog 오발동 방지)
 
-    # Heartbeat 설정 (펌웨어 watchdog 피드 + 연결 유지)
-    HEARTBEAT_INTERVAL = 2.0      # 2초마다 heartbeat 전송
+    # Heartbeat 설정 (BLE 라디오 링크 유지 + DATA_TIMEOUT 워치독 안정화)
+    HEARTBEAT_INTERVAL = 1.0      # 1초마다 ping 전송
 
     # 데이터 버퍼링 설정
     DATA_BUFFER_INTERVAL_MS = 40  # 40ms = 25Hz (펌웨어 50Hz보다 낮게 유지해 배치 처리)
@@ -111,12 +112,13 @@ class BleClientThread(QThread):
             self._loop.close()
 
     async def _main_loop(self):
-        """비동기 메인 루프 - 3개 코루틴 동시 실행 (busy-wait 없음)"""
+        """비동기 메인 루프 - 4개 코루틴 동시 실행 (busy-wait 없음)"""
         try:
             await asyncio.gather(
                 self._command_processor(),
                 self._buffer_flusher(),
                 self._watchdog(),
+                self._heartbeat_sender(),
             )
         except asyncio.CancelledError:
             pass
@@ -145,6 +147,22 @@ class BleClientThread(QThread):
             if not self._running:
                 break
             self._flush_data_buffer()
+
+    async def _heartbeat_sender(self):
+        """1초마다 ping 전송 — 펌웨어 BLE watchdog(3초)을 살아있게 유지"""
+        while self._running:
+            await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+            if not self._running:
+                break
+            if self._is_connected:
+                try:
+                    await self._client.write_gatt_char(
+                        NUS_RX_UUID,
+                        b"ping\n",
+                        response=False
+                    )
+                except Exception:
+                    pass  # 전송 실패 시 _check_connection_health가 감지
 
     async def _watchdog(self):
         """연결 상태 감시 - 조용한 연결 끊김 감지"""
@@ -250,7 +268,7 @@ class BleClientThread(QThread):
                 disconnected_callback=self._on_disconnect_callback
             )
 
-            await asyncio.wait_for(self._client.connect(), timeout=10.0)
+            await asyncio.wait_for(self._client.connect(), timeout=4.0)
 
             if self._client.is_connected:
                 await self._client.start_notify(NUS_TX_UUID, self._on_notify)

@@ -7,10 +7,10 @@
  *  Teensy 4.1 <-> Arduino Nano 33 BLE 간 UART 브릿지 통신
  *  Nordic UART Service (NUS) 프로토콜 사용
  *
- *  패킷 포맷: "SW19c<d0>n<d1>n...<d18>n"
+ *  패킷 포맷: "SW11c<d0>n<d1>n...<d10>n"
  *  - S: 시작 문자
  *  - W: Walker 명령
- *  - 19: 데이터 개수
+ *  - 11: 데이터 개수 (GCP×2, Pitch×2, GyroY×2, DesForce×2, ActForce×2, Mark)
  *  - c: 데이터 시작
  *  - n: 구분자
  *  - 값은 정수 (실제값 * 100)
@@ -54,12 +54,11 @@
 // [2] 데이터 전송 설정
 // ================================================================
 
-#define WALKER_DATA_COUNT 19   // 전송할 데이터 개수
+#define WALKER_DATA_COUNT 11   // 전송할 데이터 개수 (IMU + Force + Mark)
 #define BLE_SEND_PERIOD_MS 20  // 전송 주기 (20ms = 50Hz)
                                // ★ 9ms(111Hz) → 20ms(50Hz)로 변경
                                // 이유: 패킷 ~120bytes × 111Hz = 13,320 B/s > UART 11,520 B/s
                                //       패킷 ~120bytes × 50Hz  =  6,000 B/s < UART 11,520 B/s
-#define BLE_GCP_PERIOD_MS 3    // ★ GCP 전용 전송 주기 (3ms = 333Hz)
 
 // ================================================================
 // [3] 전역 변수 선언 (extern)
@@ -75,6 +74,9 @@ extern volatile bool bleStreamEnabled;
 // ★ 64→128 바이트: 긴 명령 (save<filename> 등) 수용
 extern char bleRxBuffer[128];
 extern uint8_t bleRxLen;
+
+// BLE 마지막 수신 시각 (millis) — 디버그/확장용
+extern uint32_t bleLastRxMs;
 
 // ================================================================
 // [4] 함수 선언
@@ -116,10 +118,6 @@ void sendWalkerDataToBLE(
     float l_gcp, float r_gcp,
     float l_pitch, float r_pitch,
     float l_gyro_y, float r_gyro_y,
-    float l_motor_pos, float r_motor_pos,
-    float l_motor_vel, float r_motor_vel,
-    float l_motor_curr, float r_motor_curr,
-    float l_des_pos, float r_des_pos,
     float l_des_force, float r_des_force,
     float l_act_force, float r_act_force,
     uint32_t mark
@@ -141,20 +139,9 @@ bool processBleSerial();
  * BleComm 모듈에서 파싱된 명령을 실제로 처리하는 함수입니다.
  * 메인 펌웨어에서 구현해야 합니다.
  *
- * @param cmd 수신된 명령 문자열
+ * @param cmd 수신된 명령 문자열 (소문자 변환 완료, null 종료)
  */
-extern void handleBleCommand(String cmd);
-
-/**
- * @brief GCP 전용 고속 전송 (333Hz)
- *
- * GCP 값만 빠르게 전송하여 GUI 반응성 향상
- * 패킷 포맷: "SG2c<L_GCP>n<R_GCP>n"
- *
- * @param l_gcp Left GCP (0~1+)
- * @param r_gcp Right GCP (0~1+)
- */
-void sendGcpToBLE(float l_gcp, float r_gcp);
+extern void handleBleCommand(const char* cmd);
 
 /**
  * @brief 펌웨어 → GUI 응답 전송

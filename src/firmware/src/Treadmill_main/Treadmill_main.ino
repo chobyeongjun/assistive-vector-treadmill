@@ -1274,6 +1274,38 @@ bool show_debug = false;
 volatile bool serialStreamEnabled = false;
 #define SERIAL_SEND_PERIOD_MS 9  // 9ms = 111Hz (USB는 BLE보다 대역폭 충분)
 
+// ================================================================
+// [I-9] ISR-safe 메시지 큐 (ISR에서 Serial.print 대신 사용)
+// ================================================================
+// SPSC 링 버퍼: ISR이 push, loop()가 drain — 락 없이 안전
+#define ISR_MSG_ASSIST_START  1
+#define ISR_MSG_ASSIST_END    2
+#define ISR_MSG_STEP_SKIP     3
+#define ISR_MSG_INIT_POS      4
+
+struct ISRMessage {
+  uint8_t code;
+  uint8_t side;
+  float   val;
+  int32_t ival;
+};
+
+#define ISR_MSG_QUEUE_SIZE 16
+volatile ISRMessage isrMsgQueue[ISR_MSG_QUEUE_SIZE];
+volatile uint8_t isrMsgHead = 0;
+volatile uint8_t isrMsgTail = 0;
+
+inline void isrMsgPush(uint8_t code, uint8_t side, float val = 0.0f, int32_t ival = 0) {
+  uint8_t next = (isrMsgHead + 1) % ISR_MSG_QUEUE_SIZE;
+  if (next != isrMsgTail) {  // full이면 드롭 (안전: 메시지 손실만, 제어 영향 없음)
+    isrMsgQueue[isrMsgHead].code = code;
+    isrMsgQueue[isrMsgHead].side = side;
+    isrMsgQueue[isrMsgHead].val  = val;
+    isrMsgQueue[isrMsgHead].ival = ival;
+    isrMsgHead = next;
+  }
+}
+
 // ################################################################
 // ##                                                            ##
 // ##  SECTION J: 로깅 시스템                                     ##
@@ -1314,6 +1346,7 @@ struct LogEntry {
   uint16_t a7;
   uint8_t mode;
   uint32_t mark;  // Mark number for CSV/BLE sync
+  float LR_total_force;  // L + R loadcell 합산 (N)
 };
 
 // ================================================================
@@ -1323,6 +1356,7 @@ struct LogEntry {
 #define RING_BUFFER_SIZE 512
 DMAMEM LogEntry logBuffer[RING_BUFFER_SIZE];
 volatile uint32_t logHead = 0, logTail = 0;
+volatile uint32_t logDropCount = 0;  // 링버퍼 오버플로 시 유실된 엔트리 수
 
 volatile bool isLogging = false;
 bool logPausedByGUI = false;  // GUI stop_log → 아날로그 트리거 무시
@@ -1491,7 +1525,7 @@ void createLogFile() {
       "L_AdmVel_mps,L_MotionFF_mps,L_TreadmillFF_mps,"
       "R_AdmVel_mps,R_MotionFF_mps,R_TreadmillFF_mps,"
       "TFF_Gain,FF_Gain_F,"
-      "A7,Mode,Mark");
+      "A7,Mode,Mark,LR_TotalForce_N");
     Serial.print("📁 Log file: ");
     Serial.println(filename);
   }
@@ -1577,6 +1611,10 @@ void stopLoggingImmediate() {
 // [L-4] 로그 버퍼 처리
 // ================================================================
 
+// [STEP 3] snprintf로 한 줄 전체를 RAM에 만든 뒤 dataFile.write() 1회 호출
+// 기존 ~100회 dataFile.print() → SPI 트랜잭션 최소화
+static char logLineBuf[1536];
+
 void processLogBuffer() {
   const int MAX_PROCESS = 30;
   int processed = 0;
@@ -1587,169 +1625,61 @@ void processLogBuffer() {
     logTail = (logTail + 1) % RING_BUFFER_SIZE;
 
     if (dataFile) {
-      dataFile.print(e.timestamp_ms);
-      dataFile.print(",");
-      dataFile.print(e.freq_hz, 1);
-      dataFile.print(",");
+      // ho_gcp는 GaitDetector에서 직접 읽음 (기존 동작 동일)
+      float l_hogcp = left_Detector.getHoGcpInCycle();
+      float r_hogcp = right_Detector.getHoGcpInCycle();
 
-      // Left
-      dataFile.print(e.L_des_force, 3);
-      dataFile.print(",");
-      dataFile.print(e.L_act_force, 3);
-      dataFile.print(",");
-      dataFile.print(e.L_err_force, 3);
-      dataFile.print(",");
-      dataFile.print(e.L_des_vel_mps, 6);
-      dataFile.print(",");
-      dataFile.print(e.L_act_vel_mps, 6);
-      dataFile.print(",");
-      dataFile.print(e.L_err_vel_mps, 6);
-      dataFile.print(",");
-      dataFile.print(e.L_des_pos_deg, 2);
-      dataFile.print(",");
-      dataFile.print(e.L_act_pos_deg, 2);
-      dataFile.print(",");
-      dataFile.print(e.L_err_pos_deg, 2);
-      dataFile.print(",");
-      dataFile.print(e.L_des_curr, 3);
-      dataFile.print(",");
-      dataFile.print(e.L_act_curr, 3);
-      dataFile.print(",");
-      dataFile.print(e.L_err_curr, 3);
-      dataFile.print(",");
-      dataFile.print(e.L_pos_integral, 4);
-      dataFile.print(",");
-      dataFile.print(e.L_vel_integral, 4);
-      dataFile.print(",");
+      int len = snprintf(logLineBuf, sizeof(logLineBuf),
+        "%lu,%.1f,"
+        // Left force/vel/pos/curr/integ
+        "%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.4f,%.4f,"
+        // Right force/vel/pos/curr/integ
+        "%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.4f,%.4f,"
+        // Left IMU
+        "%.1f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%d,%d,%.4f,%d,%.3f,%.4f,"
+        // Right IMU
+        "%.1f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%d,%d,%.4f,%d,%.3f,%.4f,"
+        // L FF, R FF, gains, tail
+        "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.4f,%.4f,%u,%d,%lu,%.3f\n",
+        // timestamp, freq
+        e.timestamp_ms, e.freq_hz,
+        // L
+        e.L_des_force, e.L_act_force, e.L_err_force,
+        e.L_des_vel_mps, e.L_act_vel_mps, e.L_err_vel_mps,
+        e.L_des_pos_deg, e.L_act_pos_deg, e.L_err_pos_deg,
+        e.L_des_curr, e.L_act_curr, e.L_err_curr,
+        e.L_pos_integral, e.L_vel_integral,
+        // R
+        e.R_des_force, e.R_act_force, e.R_err_force,
+        e.R_des_vel_mps, e.R_act_vel_mps, e.R_err_vel_mps,
+        e.R_des_pos_deg, e.R_act_pos_deg, e.R_err_pos_deg,
+        e.R_des_curr, e.R_act_curr, e.R_err_curr,
+        e.R_pos_integral, e.R_vel_integral,
+        // L IMU
+        e.imuL.rate, e.imuL.roll, e.imuL.pitch, e.imuL.yaw,
+        e.imuL.gx, e.imuL.gy, e.imuL.gz,
+        e.imuL.ax, e.imuL.ay, e.imuL.az,
+        e.imuL.dx, e.imuL.dy, e.imuL.dz,
+        (int)e.imuL.batt, e.imuL.event, e.imuL.gcp, (int)e.imuL.phase,
+        e.imuL.avg_step_time, l_hogcp,
+        // R IMU
+        e.imuR.rate, e.imuR.roll, e.imuR.pitch, e.imuR.yaw,
+        e.imuR.gx, e.imuR.gy, e.imuR.gz,
+        e.imuR.ax, e.imuR.ay, e.imuR.az,
+        e.imuR.dx, e.imuR.dy, e.imuR.dz,
+        (int)e.imuR.batt, e.imuR.event, e.imuR.gcp, (int)e.imuR.phase,
+        e.imuR.avg_step_time, r_hogcp,
+        // L FF
+        e.L_adm_vel_mps, e.L_motion_ff_mps, e.L_treadmill_ff_mps,
+        // R FF
+        e.R_adm_vel_mps, e.R_motion_ff_mps, e.R_treadmill_ff_mps,
+        // gains + tail
+        e.tff_gain, e.ff_gain_f,
+        (unsigned int)e.a7, (int)e.mode, e.mark, e.LR_total_force);
 
-      // Right
-      dataFile.print(e.R_des_force, 3);
-      dataFile.print(",");
-      dataFile.print(e.R_act_force, 3);
-      dataFile.print(",");
-      dataFile.print(e.R_err_force, 3);
-      dataFile.print(",");
-      dataFile.print(e.R_des_vel_mps, 6);
-      dataFile.print(",");
-      dataFile.print(e.R_act_vel_mps, 6);
-      dataFile.print(",");
-      dataFile.print(e.R_err_vel_mps, 6);
-      dataFile.print(",");
-      dataFile.print(e.R_des_pos_deg, 2);
-      dataFile.print(",");
-      dataFile.print(e.R_act_pos_deg, 2);
-      dataFile.print(",");
-      dataFile.print(e.R_err_pos_deg, 2);
-      dataFile.print(",");
-      dataFile.print(e.R_des_curr, 3);
-      dataFile.print(",");
-      dataFile.print(e.R_act_curr, 3);
-      dataFile.print(",");
-      dataFile.print(e.R_err_curr, 3);
-      dataFile.print(",");
-      dataFile.print(e.R_pos_integral, 4);
-      dataFile.print(",");
-      dataFile.print(e.R_vel_integral, 4);
-      dataFile.print(",");
-
-      // Left IMU
-      dataFile.print(e.imuL.rate, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuL.roll, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuL.pitch, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuL.yaw, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuL.gx, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuL.gy, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuL.gz, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuL.ax, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuL.ay, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuL.az, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuL.dx, 3);
-      dataFile.print(",");
-      dataFile.print(e.imuL.dy, 3);
-      dataFile.print(",");
-      dataFile.print(e.imuL.dz, 3);
-      dataFile.print(",");
-      dataFile.print((int)e.imuL.batt);
-      dataFile.print(",");
-      dataFile.print(e.imuL.event);
-      dataFile.print(",");
-      dataFile.print(e.imuL.gcp, 4);
-      dataFile.print(",");
-      dataFile.print(e.imuL.phase);
-      dataFile.print(",");
-      dataFile.print(e.imuL.avg_step_time, 3);
-      dataFile.print(",");
-      dataFile.print(left_Detector.getHoGcpInCycle(), 4);
-      dataFile.print(",");
-
-      // Right IMU
-      dataFile.print(e.imuR.rate, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuR.roll, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuR.pitch, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuR.yaw, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuR.gx, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuR.gy, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuR.gz, 1);
-      dataFile.print(",");
-      dataFile.print(e.imuR.ax, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuR.ay, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuR.az, 2);
-      dataFile.print(",");
-      dataFile.print(e.imuR.dx, 3);
-      dataFile.print(",");
-      dataFile.print(e.imuR.dy, 3);
-      dataFile.print(",");
-      dataFile.print(e.imuR.dz, 3);
-      dataFile.print(",");
-      dataFile.print((int)e.imuR.batt);
-      dataFile.print(",");
-      dataFile.print(e.imuR.event);
-      dataFile.print(",");
-      dataFile.print(e.imuR.gcp, 4);
-      dataFile.print(",");
-      dataFile.print(e.imuR.phase);
-      dataFile.print(",");
-      dataFile.print(e.imuR.avg_step_time, 3);
-      dataFile.print(",");
-      dataFile.print(right_Detector.getHoGcpInCycle(), 4);
-      dataFile.print(",");
-
-      // ★ FF Velocity components
-      dataFile.print(e.L_adm_vel_mps, 6); dataFile.print(",");
-      dataFile.print(e.L_motion_ff_mps, 6); dataFile.print(",");
-      dataFile.print(e.L_treadmill_ff_mps, 6); dataFile.print(",");
-      dataFile.print(e.R_adm_vel_mps, 6); dataFile.print(",");
-      dataFile.print(e.R_motion_ff_mps, 6); dataFile.print(",");
-      dataFile.print(e.R_treadmill_ff_mps, 6); dataFile.print(",");
-
-      // ★ FF Gains
-      dataFile.print(e.tff_gain, 4); dataFile.print(",");
-      dataFile.print(e.ff_gain_f, 4); dataFile.print(",");
-
-      dataFile.print(e.a7);
-      dataFile.print(",");
-      dataFile.print(e.mode);
-      dataFile.print(",");
-      dataFile.println(e.mark);
-
+      if (len > 0 && len < (int)sizeof(logLineBuf)) {
+        dataFile.write(logLineBuf, len);
+      }
       flush_cnt++;
     }
     processed++;
@@ -2142,9 +2072,7 @@ inline void positionLoopStep(Side s, float dt) {
     posPidOf(s).reset();
     pidOf(s).reset();
     desiredVelocity_erpm[s] = 0.0f;
-    Serial.print(s == SIDE_LEFT ? "📍 L" : "📍 R");
-    Serial.print(" InitPos @ HO: ");
-    Serial.println(initialPosition_deg[s], 1);
+    isrMsgPush(ISR_MSG_INIT_POS, (uint8_t)s, initialPosition_deg[s]);
   }
   prev_gcp_pos[s] = gcp;
 
@@ -2230,22 +2158,17 @@ inline void controllerStep(Side s, float dt) {
     // ★★ activeAssistSide 업데이트
     if (inProfileZone && activeAssistSide == SIDE_COUNT) {
       activeAssistSide = s;
-      Serial.print(s == SIDE_LEFT ? "🔵 LEFT" : "🔴 RIGHT");
-      Serial.println(" Force Assist STARTED (exclusive)");
+      isrMsgPush(ISR_MSG_ASSIST_START, (uint8_t)s);
     }
     if (!gcpInProfileZone && activeAssistSide == s) {
       activeAssistSide = SIDE_COUNT;
-      Serial.print(s == SIDE_LEFT ? "🔵 LEFT" : "🔴 RIGHT");
-      Serial.println(" Force Assist ENDED");
+      isrMsgPush(ISR_MSG_ASSIST_END, (uint8_t)s);
     }
 
     // ★★ 스텝 카운터 감소
     if (skipStepCount[s] > 0 && gcp > GCP_FORCE_RELEASE && gcp < 1.0f) {
       skipStepCount[s]--;
-      Serial.print(s == SIDE_LEFT ? "🦵 LEFT" : "🦵 RIGHT");
-      Serial.print(" step skipped (");
-      Serial.print(skipStepCount[s]);
-      Serial.println(" remaining) - Force Assist after warmup");
+      isrMsgPush(ISR_MSG_STEP_SKIP, (uint8_t)s, 0.0f, skipStepCount[s]);
     }
 
     float F_cmd;
@@ -2401,8 +2324,6 @@ inline void controllerStep(Side s, float dt) {
     //   Zone 3 (TFF only):   TFF sine (HS→ONSET), admittance/force 없음
     //   Zone 4 (Post-Release): 최대속도 payout → ZONE4_PAYOUT_DEG 달성 후 zero
     // ═══════════════════════════════════════════════════════════════
-    bool inStance = ((s == SIDE_LEFT) ? left_Detector.getPhase() : right_Detector.getPhase()) == GaitDetector::STANCE;
-
     // ★★★ Profile 진입 리셋 ★★★
     if (inProfileZone && !wasInProfile[s]) {
       adm_velocity_mps[s] = 0.0f;
@@ -2722,11 +2643,14 @@ void ISR_Control() {
       e.a7 = syncA7;
       e.mode = (uint8_t)currentMode;
       e.mark = currentMark;
+      e.LR_total_force = actualForce_N[SIDE_LEFT] + actualForce_N[SIDE_RIGHT];
 
       uint32_t nextHead = (logHead + 1) % RING_BUFFER_SIZE;
       if (nextHead != logTail) {
         logBuffer[logHead] = e;
         logHead = nextHead;
+      } else {
+        logDropCount++;  // 링버퍼 가득 참 → 유실 카운트
       }
     }
   }
@@ -3397,8 +3321,11 @@ void sendWalkerDataToSerial(
     );
 
     if (len > 0 && len < (int)sizeof(serialTxBuffer)) {
-        Serial.write(serialTxBuffer, len);
-        Serial.write('\n');
+        if (Serial.availableForWrite() >= len + 1) {
+            Serial.write(serialTxBuffer, len);
+            Serial.write('\n');
+        }
+        // else: skip — USB 호스트가 느리면 Teensy loop 블로킹 방지
     }
 }
 
@@ -3450,34 +3377,34 @@ void processSerialStreamNonBlocking() {
  *   - mark: 마커 번호 증가 (CSV/BLE 동기화)
  *   - imu: IMU 캘리브레이션
  */
-void handleBleCommand(String cmd) {
-  cmd.trim();
-  cmd.toLowerCase();  // ★ 대소문자 통일
-  if (cmd.length() == 0) return;
+// [STEP 4] String → char* 교체: 힙 할당 없이 직접 비교/파싱
+// processBleSerial()에서 소문자 변환 완료 후 호출됨
+void handleBleCommand(const char* cmd) {
+  if (!cmd || cmd[0] == '\0') return;
 
-  // ★ 디버그: 수신 명령 출력
+  // ping: GUI 1초 heartbeat → 워치독 타이머 갱신 (응답/로그 없음)
+  if (strcmp(cmd, "ping") == 0) return;
+
   Serial.print("[BLE RX] '");
   Serial.print(cmd);
   Serial.println("'");
 
-  // === Mark 명령 (BLE 전용) ===
-  if (cmd == "mark") {
+  // === Mark ===
+  if (strcmp(cmd, "mark") == 0) {
     currentMark++;
     Serial.print("📍 MARK: ");
     Serial.println(currentMark);
     return;
   }
 
-  // === Enable/Disable (BLE에서 'e' 수신) ===
-  if (cmd == "e") {
+  // === Enable/Disable ===
+  if (cmd[0] == 'e' && cmd[1] == '\0') {
     if (safetyTriggered[SIDE_LEFT] || safetyTriggered[SIDE_RIGHT]) {
       Serial.println("⚠️ [BLE] Safety triggered! Reset with 'r' first");
       return;
     }
-
     motorEnabled = !motorEnabled;
-    bleStreamEnabled = motorEnabled;  // 모터 Enable과 함께 BLE 스트리밍 시작
-
+    bleStreamEnabled = motorEnabled;
     if (motorEnabled) {
       initMotorEnable();
       Serial.println("✅ [BLE] Motors ENABLED + BLE Stream ON");
@@ -3491,8 +3418,8 @@ void handleBleCommand(String cmd) {
     return;
   }
 
-  // === Disable Only (BLE에서 'd' 수신) ===
-  if (cmd == "d") {
+  // === Disable Only ===
+  if (cmd[0] == 'd' && cmd[1] == '\0') {
     motorEnabled = false;
     bleStreamEnabled = false;
     desiredCurrent_A[SIDE_LEFT] = 0.0f;
@@ -3502,22 +3429,16 @@ void handleBleCommand(String cmd) {
   }
 
   // === 모드 변경 ===
-  if (cmd == "mode0") {
-    if (motorEnabled) {
-      Serial.println("⚠️ [BLE] Disable motors first before changing mode!");
-      return;
-    }
+  if (strcmp(cmd, "mode0") == 0) {
+    if (motorEnabled) { Serial.println("⚠️ [BLE] Disable motors first!"); return; }
     currentMode = MODE_FORCE_ASSIST;
     left_Detector.gcpStartMode = GCP_START_AT_HS;
     right_Detector.gcpStartMode = GCP_START_AT_HS;
     Serial.println("✅ [BLE] Mode: 0 (Force Assist)");
     return;
   }
-  if (cmd == "mode1") {
-    if (motorEnabled) {
-      Serial.println("⚠️ [BLE] Disable motors first before changing mode!");
-      return;
-    }
+  if (strcmp(cmd, "mode1") == 0) {
+    if (motorEnabled) { Serial.println("⚠️ [BLE] Disable motors first!"); return; }
     currentMode = MODE_POSITION_ASSIST;
     left_Detector.gcpStartMode = GCP_START_AT_HS;
     right_Detector.gcpStartMode = GCP_START_AT_HS;
@@ -3526,205 +3447,127 @@ void handleBleCommand(String cmd) {
   }
 
   // === IMU 캘리브레이션 ===
-  if (cmd == "imu") {
+  if (strcmp(cmd, "imu") == 0) {
     left_IMU.calibrate();
     right_IMU.calibrate();
     Serial.println("✅ [BLE] IMU Calibration started");
     return;
   }
 
-  // === Force Assist 파라미터 (★ 바운드 체크 적용) ===
-  if (cmd.startsWith("gs")) {
-    noInterrupts();
-    GCP_FORCE_ONSET = clampf(cmd.substring(2).toFloat(), 0.0f, 1.0f);
-    interrupts();
-    Serial.print("[BLE] GCP_FORCE_ONSET = ");
-    Serial.println(GCP_FORCE_ONSET, 2);
-    return;
+  // === Force Assist 파라미터 ===
+  if (cmd[0]=='g' && cmd[1]=='s' && cmd[2]!='\0') {
+    noInterrupts(); GCP_FORCE_ONSET = clampf(strtof(cmd+2, nullptr), 0.0f, 1.0f); interrupts();
+    Serial.print("[BLE] GCP_FORCE_ONSET = "); Serial.println(GCP_FORCE_ONSET, 2); return;
   }
-  if (cmd.startsWith("gp")) {
-    noInterrupts();
-    GCP_FORCE_PEAK = clampf(cmd.substring(2).toFloat(), 0.0f, 1.0f);
-    interrupts();
-    Serial.print("[BLE] GCP_FORCE_PEAK = ");
-    Serial.println(GCP_FORCE_PEAK, 2);
-    return;
+  if (cmd[0]=='g' && cmd[1]=='p' && cmd[2]!='\0') {
+    noInterrupts(); GCP_FORCE_PEAK = clampf(strtof(cmd+2, nullptr), 0.0f, 1.0f); interrupts();
+    Serial.print("[BLE] GCP_FORCE_PEAK = "); Serial.println(GCP_FORCE_PEAK, 2); return;
   }
-  if (cmd.startsWith("ge")) {
-    noInterrupts();
-    GCP_FORCE_RELEASE = clampf(cmd.substring(2).toFloat(), 0.0f, 1.0f);
-    interrupts();
-    Serial.print("[BLE] GCP_FORCE_RELEASE = ");
-    Serial.println(GCP_FORCE_RELEASE, 2);
-    return;
+  if (cmd[0]=='g' && cmd[1]=='e' && cmd[2]!='\0') {
+    noInterrupts(); GCP_FORCE_RELEASE = clampf(strtof(cmd+2, nullptr), 0.0f, 1.0f); interrupts();
+    Serial.print("[BLE] GCP_FORCE_RELEASE = "); Serial.println(GCP_FORCE_RELEASE, 2); return;
   }
-  if (cmd.startsWith("pf")) {
-    noInterrupts();
-    PEAK_FORCE_N = clampf(cmd.substring(2).toFloat(), 0.0f, 150.0f);
-    interrupts();
-    Serial.print("[BLE] PEAK_FORCE_N = ");
-    Serial.println(PEAK_FORCE_N, 2);
-    return;
+  if (cmd[0]=='p' && cmd[1]=='f' && cmd[2]!='\0') {
+    noInterrupts(); PEAK_FORCE_N = clampf(strtof(cmd+2, nullptr), 0.0f, 150.0f); interrupts();
+    Serial.print("[BLE] PEAK_FORCE_N = "); Serial.println(PEAK_FORCE_N, 2); return;
   }
-  // ★ ft: 최소 장력 설정
-  if (cmd.startsWith("ft")) {
-    noInterrupts();
-    MIN_TENSION_N = clampf(cmd.substring(2).toFloat(), 0.0f, 30.0f);
-    interrupts();
-    Serial.print("[BLE] MIN_TENSION_N = ");
-    Serial.println(MIN_TENSION_N, 2);
-    return;
+  if (cmd[0]=='f' && cmd[1]=='t' && cmd[2]!='\0') {
+    noInterrupts(); MIN_TENSION_N = clampf(strtof(cmd+2, nullptr), 0.0f, 30.0f); interrupts();
+    Serial.print("[BLE] MIN_TENSION_N = "); Serial.println(MIN_TENSION_N, 2); return;
   }
-  // ★ ff: Feedforward 게인 (F_cmd 비례)
-  if (cmd.startsWith("ff")) {
-    noInterrupts();
-    FF_GAIN_F = clampf(cmd.substring(2).toFloat(), 0.0f, 3.0f);
-    interrupts();
-    Serial.print("[BLE] FF_GAIN_F = ");
-    Serial.println(FF_GAIN_F, 4);
-    return;
+  if (cmd[0]=='f' && cmd[1]=='f' && cmd[2]!='\0') {
+    noInterrupts(); FF_GAIN_F = clampf(strtof(cmd+2, nullptr), 0.0f, 3.0f); interrupts();
+    Serial.print("[BLE] FF_GAIN_F = "); Serial.println(FF_GAIN_F, 4); return;
   }
-  // ★ fm: Motion Feedforward 게인 (Global Velocity norm 비례)
-  if (cmd.startsWith("fm")) {
-    noInterrupts();
-    FF_GAIN_MOTION = clampf(cmd.substring(2).toFloat(), 0.0f, 3.0f);
-    interrupts();
-    Serial.print("[BLE] FF_GAIN_MOTION = ");
-    Serial.println(FF_GAIN_MOTION, 4);
-    return;
+  if (cmd[0]=='f' && cmd[1]=='m' && cmd[2]!='\0') {
+    noInterrupts(); FF_GAIN_MOTION = clampf(strtof(cmd+2, nullptr), 0.0f, 3.0f); interrupts();
+    Serial.print("[BLE] FF_GAIN_MOTION = "); Serial.println(FF_GAIN_MOTION, 4); return;
   }
 
-  // ★★ Admittance 파라미터 (바운드 체크 적용)
-  // 포맷: aa<M>,<C> 예: "aa2.00,10.00"
-  if (cmd.startsWith("aa")) {
-    int commaIdx = cmd.indexOf(',');
-    if (commaIdx > 2) {
+  // === Admittance 파라미터 (포맷: aa<M>,<C>) ===
+  if (cmd[0]=='a' && cmd[1]=='a') {
+    const char* comma = strchr(cmd+2, ',');
+    if (comma && comma > cmd+2) {
       noInterrupts();
-      adm_M_assist = clampf(cmd.substring(2, commaIdx).toFloat(), 0.1f, 10.0f);
-      adm_C_assist = clampf(cmd.substring(commaIdx + 1).toFloat(), 0.5f, 50.0f);
+      adm_M_assist = clampf(strtof(cmd+2, nullptr), 0.1f, 10.0f);
+      adm_C_assist = clampf(strtof(comma+1, nullptr), 0.5f, 50.0f);
       interrupts();
-      Serial.print("[BLE] Assist: M=");
-      Serial.print(adm_M_assist, 2);
-      Serial.print(", C=");
-      Serial.println(adm_C_assist, 2);
+      Serial.print("[BLE] Assist: M="); Serial.print(adm_M_assist, 2);
+      Serial.print(", C="); Serial.println(adm_C_assist, 2);
     }
     return;
   }
-  if (cmd.startsWith("af")) {
-    int commaIdx = cmd.indexOf(',');
-    if (commaIdx > 2) {
+  if (cmd[0]=='a' && cmd[1]=='f') {
+    const char* comma = strchr(cmd+2, ',');
+    if (comma && comma > cmd+2) {
       noInterrupts();
-      adm_M_falling = clampf(cmd.substring(2, commaIdx).toFloat(), 0.1f, 10.0f);
-      adm_C_falling = clampf(cmd.substring(commaIdx + 1).toFloat(), 0.5f, 50.0f);
+      adm_M_falling = clampf(strtof(cmd+2, nullptr), 0.1f, 10.0f);
+      adm_C_falling = clampf(strtof(comma+1, nullptr), 0.5f, 50.0f);
       interrupts();
-      Serial.print("[BLE] Falling: M=");
-      Serial.print(adm_M_falling, 2);
-      Serial.print(", C=");
-      Serial.println(adm_C_falling, 2);
+      Serial.print("[BLE] Falling: M="); Serial.print(adm_M_falling, 2);
+      Serial.print(", C="); Serial.println(adm_C_falling, 2);
     }
     return;
   }
-  if (cmd.startsWith("ak")) {
-    int commaIdx = cmd.indexOf(',');
-    if (commaIdx > 2) {
+  if (cmd[0]=='a' && cmd[1]=='k') {
+    const char* comma = strchr(cmd+2, ',');
+    if (comma && comma > cmd+2) {
       noInterrupts();
-      adm_M_slack = clampf(cmd.substring(2, commaIdx).toFloat(), 0.1f, 10.0f);
-      adm_C_slack = clampf(cmd.substring(commaIdx + 1).toFloat(), 0.5f, 50.0f);
+      adm_M_slack = clampf(strtof(cmd+2, nullptr), 0.1f, 10.0f);
+      adm_C_slack = clampf(strtof(comma+1, nullptr), 0.5f, 50.0f);
       interrupts();
-      Serial.print("[BLE] Slack: M=");
-      Serial.print(adm_M_slack, 2);
-      Serial.print(", C=");
-      Serial.println(adm_C_slack, 2);
+      Serial.print("[BLE] Slack: M="); Serial.print(adm_M_slack, 2);
+      Serial.print(", C="); Serial.println(adm_C_slack, 2);
     }
     return;
   }
 
-  // === Position Assist 파라미터 (바운드 체크 적용) ===
-  if (cmd.startsWith("pa") && cmd.length() > 2) {
-    noInterrupts();
-    POSITION_AMPLITUDE_DEG = clampf(cmd.substring(2).toFloat(), 0.0f, 360.0f);
-    interrupts();
-    Serial.print("[BLE] POSITION_AMPLITUDE_DEG = ");
-    Serial.println(POSITION_AMPLITUDE_DEG, 2);
-    return;
+  // === Position Assist 파라미터 ===
+  if (cmd[0]=='p' && cmd[1]=='a' && cmd[2]!='\0') {
+    noInterrupts(); POSITION_AMPLITUDE_DEG = clampf(strtof(cmd+2, nullptr), 0.0f, 360.0f); interrupts();
+    Serial.print("[BLE] POSITION_AMPLITUDE_DEG = "); Serial.println(POSITION_AMPLITUDE_DEG, 2); return;
   }
-  if (cmd.startsWith("ps") && cmd.length() > 2) {
-    noInterrupts();
-    GCP_POS_START = clampf(cmd.substring(2).toFloat(), 0.0f, 1.0f);
-    interrupts();
-    Serial.print("[BLE] GCP_POS_START = ");
-    Serial.println(GCP_POS_START, 2);
-    return;
+  if (cmd[0]=='p' && cmd[1]=='s' && cmd[2]!='\0') {
+    noInterrupts(); GCP_POS_START = clampf(strtof(cmd+2, nullptr), 0.0f, 1.0f); interrupts();
+    Serial.print("[BLE] GCP_POS_START = "); Serial.println(GCP_POS_START, 2); return;
   }
-  if (cmd.startsWith("pe") && cmd.length() > 2) {
-    noInterrupts();
-    GCP_POS_END = clampf(cmd.substring(2).toFloat(), 0.0f, 1.0f);
-    interrupts();
-    Serial.print("[BLE] GCP_POS_END = ");
-    Serial.println(GCP_POS_END, 2);
+  if (cmd[0]=='p' && cmd[1]=='e' && cmd[2]!='\0') {
+    noInterrupts(); GCP_POS_END = clampf(strtof(cmd+2, nullptr), 0.0f, 1.0f); interrupts();
+    Serial.print("[BLE] GCP_POS_END = "); Serial.println(GCP_POS_END, 2); return;
+  }
+
+  // === Treadmill / TFF ===
+  if (cmd[0]=='t' && cmd[1]=='m' && cmd[2]!='\0') {
+    noInterrupts(); treadmill_speed_mps = clampf(strtof(cmd+2, nullptr), 0.0f, 3.0f); interrupts();
+    Serial.print("[BLE] Treadmill speed = "); Serial.print(treadmill_speed_mps, 2); Serial.println(" m/s"); return;
+  }
+  if (cmd[0]=='t' && cmd[1]=='g' && cmd[2]!='\0') {
+    noInterrupts(); TFF_GAIN = clampf(strtof(cmd+2, nullptr), 0.0f, 5.0f); interrupts();
+    Serial.print("[BLE] TFF Gain = "); Serial.println(TFF_GAIN, 2); return;
+  }
+  if (cmd[0]=='t' && cmd[1]=='e' && cmd[2]!='\0') {
+    noInterrupts(); TFF_END_OFFSET = clampf(strtof(cmd+2, nullptr), 0.0f, 0.5f); interrupts();
+    Serial.print("[BLE] TFF End Offset = "); Serial.print(TFF_END_OFFSET, 2);
+    Serial.print(" → tff_end = "); Serial.print(GCP_FORCE_ONSET - TFF_END_OFFSET, 2);
+    Serial.print(", peak at "); Serial.println((GCP_FORCE_ONSET - TFF_END_OFFSET) / 2.0f, 2);
     return;
   }
 
-  // === Treadmill Speed (BLE에서 'tm' + 값 수신) ===
-  // 예: "tm1.0" → treadmill belt speed = 1.0 m/s
-  // "tm0" → treadmill 보상 끄기 (overground mode)
-  if (cmd.startsWith("tm") && cmd.length() > 2) {
-    noInterrupts();
-    treadmill_speed_mps = clampf(cmd.substring(2).toFloat(), 0.0f, 3.0f);
-    interrupts();
-    Serial.print("[BLE] Treadmill speed = ");
-    Serial.print(treadmill_speed_mps, 2);
-    Serial.println(" m/s");
-    return;
-  }
-
-  // === TFF Gain (BLE에서 'tg' + 값 수신) ===
-  if (cmd.startsWith("tg") && cmd.length() > 2) {
-    noInterrupts();
-    TFF_GAIN = clampf(cmd.substring(2).toFloat(), 0.0f, 5.0f);
-    interrupts();
-    Serial.print("[BLE] TFF Gain = ");
-    Serial.println(TFF_GAIN, 2);
-    return;
-  }
-
-  // === TFF End Offset (BLE에서 'te' + 값 수신) ===
-  // 예: "te0.10" → ONSET 10% 전에서 TFF 종료, peak는 그 절반
-  // "te0.15" → ONSET 15% 전에서 TFF 종료
-  if (cmd.startsWith("te") && cmd.length() > 2) {
-    noInterrupts();
-    TFF_END_OFFSET = clampf(cmd.substring(2).toFloat(), 0.0f, 0.5f);
-    interrupts();
-    Serial.print("[BLE] TFF End Offset = ");
-    Serial.print(TFF_END_OFFSET, 2);
-    Serial.print(" → tff_end = ");
-    Serial.print(GCP_FORCE_ONSET - TFF_END_OFFSET, 2);
-    Serial.print(", peak at ");
-    Serial.println((GCP_FORCE_ONSET - TFF_END_OFFSET) / 2.0f, 2);
-    return;
-  }
-
-  // === Save / Logging 명령 ===
-  // "save"         → 자동 파일명으로 새 파일 시작 (이미 로깅 중이면 이전 파일 닫고 재시작)
-  // "save<name>"   → 지정 파일명으로 새 파일 시작 (예: "saveTEST01")
-  // "s"            → 호환용: 동일 동작
-  if (cmd == "s" || cmd.startsWith("save")) {
-    if (cmd.startsWith("save") && cmd.length() > 4) {
-      // 커스텀 파일명 지정
-      String fname = cmd.substring(4);
-      fname.trim();
-      if (fname.length() > 0 && fname.length() < sizeof(customFilename) - 1) {
-        fname.toCharArray(customFilename, sizeof(customFilename));
-        Serial.print("[BLE] Custom filename: ");
-        Serial.println(customFilename);
+  // === Save / Logging ===
+  if ((cmd[0]=='s' && cmd[1]=='\0') || strncmp(cmd, "save", 4) == 0) {
+    if (strncmp(cmd, "save", 4) == 0 && cmd[4] != '\0') {
+      const char* fname = cmd + 4;
+      while (*fname == ' ') fname++;
+      size_t flen = strlen(fname);
+      while (flen > 0 && fname[flen-1] == ' ') flen--;
+      if (flen > 0 && flen < sizeof(customFilename) - 1) {
+        strncpy(customFilename, fname, flen);
+        customFilename[flen] = '\0';
+        Serial.print("[BLE] Custom filename: "); Serial.println(customFilename);
       }
     }
-    // ★ 항상 새 파일 시작: 이미 로깅 중이면 현재 파일 닫고 새 파일로
-    if (isLogging) {
-      stopLoggingImmediate();  // 버퍼 flush + 파일 닫기
-    }
+    if (isLogging) stopLoggingImmediate();
     startLogging();
-    // ★ GUI에 로깅 상태 피드백 전송
     if (isLogging) {
       char resp[48];
       snprintf(resp, sizeof(resp), "LOG_START:%s", filename);
@@ -3735,55 +3578,40 @@ void handleBleCommand(String cmd) {
     return;
   }
 
-  // === Motor Zero Position (BLE에서 'motor' 수신) ===
-  if (cmd == "motor") {
-    if (motorEnabled) {
-      Serial.println("⚠️ [BLE] Disable motors first before zeroing!");
-      return;
-    }
+  // === Motor Zero ===
+  if (strcmp(cmd, "motor") == 0) {
+    if (motorEnabled) { Serial.println("⚠️ [BLE] Disable motors first!"); return; }
     setAllMotorsOrigin();
     Serial.println("✅ [BLE] Motor position zeroed");
     return;
   }
 
-  // ★ preset<N>: 실험 프리셋 (BLE)
-  if (cmd.startsWith("preset")) {
-    applyPreset(cmd.substring(6).toInt());
+  // === 프리셋 ===
+  if (strncmp(cmd, "preset", 6) == 0) {
+    applyPreset(atoi(cmd+6));
     return;
   }
 
-  // ★ z4, zr, z3c, z3v (BLE에서도 접근 가능)
-  if (cmd.startsWith("z4")) {
-    noInterrupts();
-    ZONE4_PAYOUT_DEG = clampf(cmd.substring(2).toFloat(), 0.0f, 360.0f);
-    interrupts();
-    Serial.print("[BLE] ZONE4_PAYOUT_DEG = "); Serial.println(ZONE4_PAYOUT_DEG, 1);
-    return;
+  // === Zone 파라미터 (z3c/z3v는 z4/zr보다 먼저 체크) ===
+  if (cmd[0]=='z' && cmd[1]=='3' && cmd[2]=='c' && cmd[3]!='\0') {
+    noInterrupts(); ZONE3_MAX_WIND_CURRENT_A = clampf(strtof(cmd+3, nullptr), 0.0f, MAX_CURRENT_A); interrupts();
+    Serial.print("[BLE] ZONE3_MAX_WIND_CURRENT = "); Serial.println(ZONE3_MAX_WIND_CURRENT_A, 2); return;
   }
-  if (cmd.startsWith("zr")) {
-    noInterrupts();
-    ZONE4_RAMP_MS = clampf(cmd.substring(2).toFloat(), 10.0f, 500.0f);
-    interrupts();
-    Serial.print("[BLE] ZONE4_RAMP_MS = "); Serial.println(ZONE4_RAMP_MS, 1);
-    return;
+  if (cmd[0]=='z' && cmd[1]=='3' && cmd[2]=='v' && cmd[3]!='\0') {
+    noInterrupts(); ZONE3_MAX_VEL_MPS = clampf(strtof(cmd+3, nullptr), 0.0f, MAX_ADM_VELOCITY_MPS); interrupts();
+    Serial.print("[BLE] ZONE3_MAX_VEL = "); Serial.println(ZONE3_MAX_VEL_MPS, 2); return;
   }
-  if (cmd.startsWith("z3c")) {
-    noInterrupts();
-    ZONE3_MAX_WIND_CURRENT_A = clampf(cmd.substring(3).toFloat(), 0.0f, MAX_CURRENT_A);
-    interrupts();
-    Serial.print("[BLE] ZONE3_MAX_WIND_CURRENT = "); Serial.println(ZONE3_MAX_WIND_CURRENT_A, 2);
-    return;
+  if (cmd[0]=='z' && cmd[1]=='4' && cmd[2]!='\0') {
+    noInterrupts(); ZONE4_PAYOUT_DEG = clampf(strtof(cmd+2, nullptr), 0.0f, 360.0f); interrupts();
+    Serial.print("[BLE] ZONE4_PAYOUT_DEG = "); Serial.println(ZONE4_PAYOUT_DEG, 1); return;
   }
-  if (cmd.startsWith("z3v")) {
-    noInterrupts();
-    ZONE3_MAX_VEL_MPS = clampf(cmd.substring(3).toFloat(), 0.0f, MAX_ADM_VELOCITY_MPS);
-    interrupts();
-    Serial.print("[BLE] ZONE3_MAX_VEL = "); Serial.println(ZONE3_MAX_VEL_MPS, 2);
-    return;
+  if (cmd[0]=='z' && cmd[1]=='r' && cmd[2]!='\0') {
+    noInterrupts(); ZONE4_RAMP_MS = clampf(strtof(cmd+2, nullptr), 10.0f, 500.0f); interrupts();
+    Serial.print("[BLE] ZONE4_RAMP_MS = "); Serial.println(ZONE4_RAMP_MS, 1); return;
   }
 
-  // SD 파일 전송 (BLE에서도 접근 가능 — 로깅 중에는 거부)
-  if (SDTransfer::handleCommand(cmd, isLogging)) return;
+  // SD 파일 전송 (SDTransfer 라이브러리는 String 인터페이스 유지)
+  if (SDTransfer::handleCommand(String(cmd), isLogging)) return;
 
   Serial.print("[BLE] Unknown command: ");
   Serial.println(cmd);
@@ -3858,7 +3686,56 @@ void setup() {
   printHelp();
 }
 
+// ================================================================
+// [STEP 1] ISR 메시지 큐 drain — loop()에서 호출
+// ================================================================
+void drainISRMessages() {
+  // 링버퍼 오버플로 감지: 유실된 로그 엔트리가 있으면 경고
+  if (logDropCount > 0) {
+    noInterrupts();
+    uint32_t dropped = logDropCount;
+    logDropCount = 0;
+    interrupts();
+    Serial.print("⚠️ LOG OVERFLOW: ");
+    Serial.print(dropped);
+    Serial.println(" entries dropped (SD too slow)");
+  }
+
+  while (isrMsgTail != isrMsgHead) {
+    uint8_t code = isrMsgQueue[isrMsgTail].code;
+    uint8_t side = isrMsgQueue[isrMsgTail].side;
+    float   val  = isrMsgQueue[isrMsgTail].val;
+    int32_t ival = isrMsgQueue[isrMsgTail].ival;
+    isrMsgTail = (isrMsgTail + 1) % ISR_MSG_QUEUE_SIZE;
+
+    switch (code) {
+      case ISR_MSG_ASSIST_START:
+        Serial.print(side == SIDE_LEFT ? "🔵 LEFT" : "🔴 RIGHT");
+        Serial.println(" Force Assist STARTED (exclusive)");
+        break;
+      case ISR_MSG_ASSIST_END:
+        Serial.print(side == SIDE_LEFT ? "🔵 LEFT" : "🔴 RIGHT");
+        Serial.println(" Force Assist ENDED");
+        break;
+      case ISR_MSG_STEP_SKIP:
+        Serial.print(side == SIDE_LEFT ? "🦵 LEFT" : "🦵 RIGHT");
+        Serial.print(" step skipped (");
+        Serial.print(ival);
+        Serial.println(" remaining) - Force Assist after warmup");
+        break;
+      case ISR_MSG_INIT_POS:
+        Serial.print(side == SIDE_LEFT ? "📍 L" : "📍 R");
+        Serial.print(" InitPos @ HO: ");
+        Serial.println(val, 1);
+        break;
+    }
+  }
+}
+
 void loop() {
+  // [STEP 1] ISR 메시지 큐 drain (ISR에서 Serial.print 대신 여기서 출력)
+  drainISRMessages();
+
   // ★★★ 안전: 메인루프 타임아웃 감지 ★★★
   // SD 카드 flush 등으로 루프가 50ms 이상 지연되면 경고
   static uint32_t lastLoopMs = 0;
@@ -3876,63 +3753,81 @@ void loop() {
   // BLE 명령 처리
   processBleSerial();
 
-  // BLE 전체 데이터 전송 (9ms 주기)
+  // BLE 전체 데이터 전송 (20ms 주기 = 50Hz)
+  // volatile 변수 전체를 noInterrupts 안에서 한 번에 스냅샷 — race condition 방지
   static uint32_t lastBleSend = 0;
   if (bleStreamEnabled && (millis() - lastBleSend >= BLE_SEND_PERIOD_MS)) {
     lastBleSend = millis();
 
-    // 현재 데이터 스냅샷
-    // ★★★ 실시간 GCP 사용 ★★★
-    float l_gcp, r_gcp, l_pitch, r_pitch, l_gy, r_gy;
+    // getGCP()은 noInterrupts 밖에서 호출 — 함수 계산이 ISR 지연 유발 방지
+    float bl_lgcp = left_Detector.getGCP();
+    float bl_rgcp = right_Detector.getGCP();
+    float bl_lpitch, bl_rpitch, bl_lgy, bl_rgy;
+    float bl_ldesf, bl_rdesf, bl_lactf, bl_ractf;
+    uint32_t bl_mark;
     noInterrupts();
-    l_gcp = left_Detector.getGCP();
-    r_gcp = right_Detector.getGCP();
-    l_pitch = snapL.pitch;
-    r_pitch = snapR.pitch;
-    l_gy = snapL.gy;
-    r_gy = snapR.gy;
+    bl_lpitch = snapL.pitch;
+    bl_rpitch = snapR.pitch;
+    bl_lgy   = snapL.gy;
+    bl_rgy   = snapR.gy;
+    bl_ldesf = desiredForce_N[SIDE_LEFT];
+    bl_rdesf = desiredForce_N[SIDE_RIGHT];
+    bl_lactf = actualForce_N[SIDE_LEFT];
+    bl_ractf = actualForce_N[SIDE_RIGHT];
+    bl_mark  = currentMark;
     interrupts();
 
     sendWalkerDataToBLE(
-      l_gcp, r_gcp,
-      l_pitch, r_pitch,
-      l_gy, r_gy,
-      motor_position_deg[SIDE_LEFT], motor_position_deg[SIDE_RIGHT],
-      motor_velocity_erpm[SIDE_LEFT], motor_velocity_erpm[SIDE_RIGHT],
-      motor_current_a[SIDE_LEFT], motor_current_a[SIDE_RIGHT],
-      desiredPosition_deg[SIDE_LEFT], desiredPosition_deg[SIDE_RIGHT],
-      desiredForce_N[SIDE_LEFT], desiredForce_N[SIDE_RIGHT],
-      actualForce_N[SIDE_LEFT], actualForce_N[SIDE_RIGHT],
-      currentMark);
+      bl_lgcp, bl_rgcp,
+      bl_lpitch, bl_rpitch,
+      bl_lgy, bl_rgy,
+      bl_ldesf, bl_rdesf,
+      bl_lactf, bl_ractf,
+      bl_mark);
   }
 
-  // ★★★ USB Serial 데이터 스트리밍 (Treadmill_main 추가) ★★★
-  // BLE와 완전 독립 — 동일 데이터를 USB Serial로 동시 전송
+  // USB Serial 데이터 스트리밍 (BLE와 동일한 스냅샷 패턴 적용)
   static uint32_t lastSerialSend = 0;
   if (serialStreamEnabled && (millis() - lastSerialSend >= SERIAL_SEND_PERIOD_MS)) {
     lastSerialSend = millis();
 
-    float l_gcp_s, r_gcp_s, l_pitch_s, r_pitch_s, l_gy_s, r_gy_s;
+    float sl_lgcp = left_Detector.getGCP();
+    float sl_rgcp = right_Detector.getGCP();
+    float sl_lpitch, sl_rpitch, sl_lgy, sl_rgy;
+    float sl_lpos, sl_rpos, sl_lvel, sl_rvel, sl_lcurr, sl_rcurr;
+    float sl_ldespos, sl_rdespos, sl_ldesf, sl_rdesf, sl_lactf, sl_ractf;
+    uint32_t sl_mark;
     noInterrupts();
-    l_gcp_s = left_Detector.getGCP();
-    r_gcp_s = right_Detector.getGCP();
-    l_pitch_s = snapL.pitch;
-    r_pitch_s = snapR.pitch;
-    l_gy_s = snapL.gy;
-    r_gy_s = snapR.gy;
+    sl_lpitch  = snapL.pitch;
+    sl_rpitch  = snapR.pitch;
+    sl_lgy     = snapL.gy;
+    sl_rgy     = snapR.gy;
+    sl_lpos    = motor_position_deg[SIDE_LEFT];
+    sl_rpos    = motor_position_deg[SIDE_RIGHT];
+    sl_lvel    = motor_velocity_erpm[SIDE_LEFT];
+    sl_rvel    = motor_velocity_erpm[SIDE_RIGHT];
+    sl_lcurr   = motor_current_a[SIDE_LEFT];
+    sl_rcurr   = motor_current_a[SIDE_RIGHT];
+    sl_ldespos = desiredPosition_deg[SIDE_LEFT];
+    sl_rdespos = desiredPosition_deg[SIDE_RIGHT];
+    sl_ldesf   = desiredForce_N[SIDE_LEFT];
+    sl_rdesf   = desiredForce_N[SIDE_RIGHT];
+    sl_lactf   = actualForce_N[SIDE_LEFT];
+    sl_ractf   = actualForce_N[SIDE_RIGHT];
+    sl_mark    = currentMark;
     interrupts();
 
     sendWalkerDataToSerial(
-      l_gcp_s, r_gcp_s,
-      l_pitch_s, r_pitch_s,
-      l_gy_s, r_gy_s,
-      motor_position_deg[SIDE_LEFT], motor_position_deg[SIDE_RIGHT],
-      motor_velocity_erpm[SIDE_LEFT], motor_velocity_erpm[SIDE_RIGHT],
-      motor_current_a[SIDE_LEFT], motor_current_a[SIDE_RIGHT],
-      desiredPosition_deg[SIDE_LEFT], desiredPosition_deg[SIDE_RIGHT],
-      desiredForce_N[SIDE_LEFT], desiredForce_N[SIDE_RIGHT],
-      actualForce_N[SIDE_LEFT], actualForce_N[SIDE_RIGHT],
-      currentMark);
+      sl_lgcp, sl_rgcp,
+      sl_lpitch, sl_rpitch,
+      sl_lgy, sl_rgy,
+      sl_lpos, sl_rpos,
+      sl_lvel, sl_rvel,
+      sl_lcurr, sl_rcurr,
+      sl_ldespos, sl_rdespos,
+      sl_ldesf, sl_rdesf,
+      sl_lactf, sl_ractf,
+      sl_mark);
   }
 
   // Analog 트리거 (A7)
