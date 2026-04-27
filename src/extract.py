@@ -35,16 +35,22 @@ def pick_folder(title="저장 폴더 선택") -> Path:
     try:
         import tkinter as tk
         from tkinter import filedialog
+        import subprocess, platform
         root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)
-        folder = filedialog.askdirectory(title=title)
+        # Mac에서 창을 앞으로 강제로 올림
+        if platform.system() == "Darwin":
+            subprocess.run(["osascript", "-e",
+                'tell application "Finder" to activate'], capture_output=True)
+        root.lift()
+        root.focus_force()
+        folder = filedialog.askdirectory(title=title, parent=root)
         root.destroy()
         if not folder:
             sys.exit("폴더 선택 취소됨")
         return Path(folder)
     except Exception:
-        # tkinter 없는 환경 (headless) → 터미널 입력
         folder = input("저장 폴더 경로 입력: ").strip()
         return Path(folder) if folder else Path("data")
 
@@ -244,9 +250,11 @@ def main():
     if not port:
         sys.exit("No serial port found. Specify --port /dev/ttyXXX")
 
-    print(f"[+] {port} @ {args.baud}")
+    print(f"[+] {port} @ {args.baud} — 연결 중...")
     link = TeensyLink(port, args.baud, args.timeout)
+    print("[+] 연결 완료")
     out_dir = Path(args.out) if args.out else pick_folder()
+    print(f"[+] 저장 위치: {out_dir.resolve()}")
 
     try:
         if args.action == "ls":
