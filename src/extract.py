@@ -71,20 +71,37 @@ def _import_serial():
         sys.exit("pyserial not found. Run: pip3 install pyserial")
 
 
+EXCLUDE_KEYWORDS = ["debug", "console", "bluetooth", "bt-", "bthf"]
+
 def auto_detect_port(list_ports):
     teensy_ids = [(0x16C0, 0x0483), (0x16C0, 0x0487)]
-    candidates = []
+    usbmodem = []
+    all_real = []
     for p in list_ports.comports():
+        dev = p.device or ""
+        if any(kw in dev.lower() for kw in EXCLUDE_KEYWORDS):
+            continue
         vid = getattr(p, 'vid', None)
         pid = getattr(p, 'pid', None)
         if (vid, pid) in teensy_ids:
-            return p.device
-        if p.device and ('usbmodem' in p.device.lower() or 'ttyacm' in p.device.lower()):
-            candidates.append(p.device)
-    if candidates:
-        return candidates[0]
-    all_ports = list(list_ports.comports())
-    return all_ports[0].device if all_ports else None
+            return dev
+        if 'usbmodem' in dev.lower() or 'ttyacm' in dev.lower():
+            usbmodem.append(dev)
+        else:
+            all_real.append(dev)
+    if usbmodem:
+        return usbmodem[0]
+    # 찾지 못했으면 목록 보여주고 선택하게 함
+    if all_real:
+        print("[!] Teensy 포트를 특정하지 못했습니다. 사용 가능한 포트:")
+        for i, d in enumerate(all_real):
+            print(f"    [{i}] {d}")
+        try:
+            idx = int(input("번호 선택: ").strip())
+            return all_real[idx]
+        except Exception:
+            pass
+    return None
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -313,12 +330,26 @@ def main():
             if not csv_files:
                 print("No CSV files on SD.")
             else:
-                print(f"[+] {len(csv_files)} CSV file(s)")
-                for f in csv_files:
+                print(f"\n{'#':<4} {'Name':<20} {'Size':>10}")
+                print("-" * 36)
+                for i, f in enumerate(csv_files):
+                    print(f"[{i}] {f['name']:<20} {f['size']:>10,}")
+                print("\n전체 다운로드: Enter  |  선택 다운로드: 번호 입력 (예: 0 2 3)")
+                sel = input("> ").strip()
+                if sel == "":
+                    selected = csv_files
+                else:
+                    try:
+                        idxs = [int(x) for x in sel.split()]
+                        selected = [csv_files[i] for i in idxs if 0 <= i < len(csv_files)]
+                    except Exception:
+                        selected = csv_files
+                print(f"[+] {len(selected)}개 다운로드")
+                for f in selected:
                     path = link.get_file(f["name"], out_dir)
                     if args.delete and path:
                         link.delete_file(f["name"])
-                print(f"\n[OK] Saved to {out_dir.resolve()}")
+                print(f"\n[OK] 저장 완료 → {out_dir.resolve()}")
 
     finally:
         link.close()
