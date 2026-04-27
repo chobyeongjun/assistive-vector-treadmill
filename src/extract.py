@@ -32,20 +32,24 @@ from pathlib import Path
 
 
 def pick_folder(title="저장 폴더 선택") -> Path:
+    import platform
+    if platform.system() == "Darwin":
+        import subprocess
+        r = subprocess.run(
+            ["osascript", "-e",
+             f'POSIX path of (choose folder with prompt "{title}")'],
+            capture_output=True, text=True
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            sys.exit("폴더 선택 취소됨")
+        return Path(r.stdout.strip())
+    # non-Mac fallback
     try:
         import tkinter as tk
         from tkinter import filedialog
-        import subprocess, platform
         root = tk.Tk()
         root.withdraw()
-        root.attributes("-topmost", True)
-        # Mac에서 창을 앞으로 강제로 올림
-        if platform.system() == "Darwin":
-            subprocess.run(["osascript", "-e",
-                'tell application "Finder" to activate'], capture_output=True)
-        root.lift()
-        root.focus_force()
-        folder = filedialog.askdirectory(title=title, parent=root)
+        folder = filedialog.askdirectory(title=title)
         root.destroy()
         if not folder:
             sys.exit("폴더 선택 취소됨")
