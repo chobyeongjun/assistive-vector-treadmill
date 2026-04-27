@@ -71,37 +71,36 @@ def _import_serial():
         sys.exit("pyserial not found. Run: pip3 install pyserial")
 
 
-EXCLUDE_KEYWORDS = ["debug", "console", "bluetooth", "bt-", "bthf"]
-
 def auto_detect_port(list_ports):
     teensy_ids = [(0x16C0, 0x0483), (0x16C0, 0x0487)]
     usbmodem = []
-    all_real = []
+    others = []
     for p in list_ports.comports():
         dev = p.device or ""
-        if any(kw in dev.lower() for kw in EXCLUDE_KEYWORDS):
-            continue
         vid = getattr(p, 'vid', None)
         pid = getattr(p, 'pid', None)
         if (vid, pid) in teensy_ids:
-            return dev
+            return dev                          # VID/PID 확실히 일치
         if 'usbmodem' in dev.lower() or 'ttyacm' in dev.lower():
             usbmodem.append(dev)
         else:
-            all_real.append(dev)
-    if usbmodem:
-        return usbmodem[0]
-    # 찾지 못했으면 목록 보여주고 선택하게 함
-    if all_real:
-        print("[!] Teensy 포트를 특정하지 못했습니다. 사용 가능한 포트:")
-        for i, d in enumerate(all_real):
-            print(f"    [{i}] {d}")
-        try:
-            idx = int(input("번호 선택: ").strip())
-            return all_real[idx]
-        except Exception:
-            pass
-    return None
+            others.append(dev)
+
+    if len(usbmodem) == 1:
+        return usbmodem[0]                      # usbmodem 하나만 있으면 바로 사용
+
+    # 자동 판단 불가 → 전체 목록 보여주고 선택
+    all_ports = usbmodem + others
+    if not all_ports:
+        return None
+    print("[!] 포트를 자동으로 특정하지 못했습니다. 연결된 포트 목록:")
+    for i, d in enumerate(all_ports):
+        print(f"    [{i}] {d}")
+    try:
+        idx = int(input("번호 선택 > ").strip())
+        return all_ports[idx]
+    except Exception:
+        return None
 
 
 # ──────────────────────────────────────────────────────────────────
