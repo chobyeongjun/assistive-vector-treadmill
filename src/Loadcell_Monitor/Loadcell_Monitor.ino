@@ -152,6 +152,7 @@ volatile uint16_t logHead = 0;   // ISR이 쓰는 위치
 volatile uint16_t logTail = 0;   // loop()이 읽는 위치
 
 volatile bool isLogging = false;
+bool logPausedByGUI = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
 
@@ -357,11 +358,13 @@ void handleSerialCmd(String cmd) {
     if (cmd.length() == 0) return;
 
     if (cmd == "log") {
+        logPausedByGUI = false;
         startLogging();
         return;
     }
     if (cmd == "logstop" || cmd == "stop_log") {
         if (isLogging) stopLogging();
+        logPausedByGUI = true;
         Serial.println("__LOG_STOPPED__");
         return;
     }
@@ -463,7 +466,7 @@ void loop() {
 
     // ── A7 analog sync trigger ──
     // [수정된 부분] A7 값은 이제 ISR에서 읽으므로, 여기서는 트리거(임계값 넘었는지)만 체크
-    if (!isLogging && syncA7 > TRIGGER_THRESHOLD) {
+    if (!isLogging && !logPausedByGUI && syncA7 > TRIGGER_THRESHOLD) {
         Serial.print("[A7] Trigger detected (");
         Serial.print(syncA7);
         Serial.println(") → auto startLogging");
