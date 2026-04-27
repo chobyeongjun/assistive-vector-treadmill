@@ -452,18 +452,82 @@ class ControlPanel(QWidget):
     # ------ Log Card ------
     def _create_log_card(self) -> QFrame:
         card = _glass_card()
-        card.setFixedHeight(150)
+        card.setFixedHeight(200)
         cl = QVBoxLayout(card)
         cl.setContentsMargins(10, 10, 10, 10)
+        cl.setSpacing(6)
 
-        cl.addWidget(_section_label("Log"))
+        cl.addWidget(_section_label("Logging"))
 
+        # 상태 표시
+        status_row = QHBoxLayout()
+        self._log_dot = QLabel("●")
+        self._log_dot.setFixedWidth(16)
+        self._log_status_label = QLabel("STOPPED")
+        self._log_status_label.setStyleSheet(
+            f"font-size:11px; font-weight:700; color:{C['muted']}; background:transparent; border:none;"
+        )
+        self._set_logging_indicator(False)
+        status_row.addWidget(self._log_dot)
+        status_row.addWidget(self._log_status_label)
+        status_row.addStretch()
+        cl.addLayout(status_row)
+
+        # 시작 / 중지 버튼
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+
+        self._log_start_btn = QPushButton("▶  시작")
+        self._log_start_btn.setObjectName("GreenBtn")
+        self._log_start_btn.clicked.connect(self._logging_start)
+
+        self._log_stop_btn = QPushButton("■  중지")
+        self._log_stop_btn.setObjectName("RedBtn")
+        self._log_stop_btn.clicked.connect(self._logging_stop)
+
+        btn_row.addWidget(self._log_start_btn)
+        btn_row.addWidget(self._log_stop_btn)
+        cl.addLayout(btn_row)
+
+        # 로그 텍스트
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setObjectName("LogText")
         cl.addWidget(self.log_text)
 
         return card
+
+    def _set_logging_indicator(self, is_logging: bool):
+        if is_logging:
+            self._log_dot.setStyleSheet(
+                "color:#4CAF50; font-size:14px; background:transparent; border:none;"
+            )
+            self._log_status_label.setText("RECORDING")
+            self._log_status_label.setStyleSheet(
+                "font-size:11px; font-weight:700; color:#4CAF50; background:transparent; border:none;"
+            )
+        else:
+            self._log_dot.setStyleSheet(
+                f"color:{C['muted']}; font-size:14px; background:transparent; border:none;"
+            )
+            self._log_status_label.setText("STOPPED")
+            self._log_status_label.setStyleSheet(
+                f"font-size:11px; font-weight:700; color:{C['muted']}; background:transparent; border:none;"
+            )
+
+    def _logging_start(self):
+        self.command_requested.emit("s")          # Treadmill_main 로깅 시작
+        self.command_requested.emit("log")        # Loadcell_Monitor 로깅 시작
+        self._set_logging_indicator(True)
+
+    def _logging_stop(self):
+        self.command_requested.emit("stop_log")   # Treadmill_main 로깅 중지
+        self.command_requested.emit("logstop")    # Loadcell_Monitor 로깅 중지
+        self._set_logging_indicator(False)
+
+    def set_logging_status(self, is_logging: bool):
+        """외부에서 로깅 상태 업데이트 (BLE 수신 등)"""
+        self._set_logging_indicator(is_logging)
 
     # === Slots ===
 
