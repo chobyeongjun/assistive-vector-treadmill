@@ -62,12 +62,12 @@ const float AI_CNT_TO_V = 3.3f / 4096.0f;
 //    - 변경: compression 양수 (누를 때 +) → sensitive 부호 반전 or bias 조정
 
 // --- Left Loadcell ---
-const float LEFT_BIAS       = -308.2f;   // [N] offset
-const float LEFT_SENSITIVE  = 250.5f;    // [N/V] sensitivity
+const float LEFT_BIAS       = -415.4756f;   // [N] offset
+const float LEFT_SENSITIVE  = 337.7788f;    // [N/V] sensitivity
 
 // --- Right Loadcell ---
-const float RIGHT_BIAS      = -670.0f;   // [N] offset
-const float RIGHT_SENSITIVE = 549.0f;    // [N/V] sensitivity
+const float RIGHT_BIAS      = -423.1394f;   // [N] offset
+const float RIGHT_SENSITIVE = 341.5346f;    // [N/V] sensitivity
 
 // ★ Compression 양수 변환 플래그
 // true: Force = -((voltage * sensitive) + bias) → compression이 양수
@@ -175,9 +175,6 @@ float readLoadcellForceN(int pin, float bias, float sensitive, LowPassFilter& lp
     // LPF 적용
     F = lpf.update(F);
 
-    // 음수 클램프 (compression 기준: 당기는 힘은 0으로)
-    if (F < 0) F = 0;
-
     return F;
 }
 
@@ -193,8 +190,6 @@ void adcISR() {
     // 333Hz로 ADC 읽기 + LPF 적용 - tare 오프셋 차감
     forceLeft_N  = readLoadcellForceN(LEFT_LOADCELL_PIN,  LEFT_BIAS,  LEFT_SENSITIVE,  loadcellFilter_L) - tareOffset_L;
     forceRight_N = readLoadcellForceN(RIGHT_LOADCELL_PIN, RIGHT_BIAS, RIGHT_SENSITIVE, loadcellFilter_R) - tareOffset_R;
-    if (forceLeft_N < 0)  forceLeft_N = 0;
-    if (forceRight_N < 0) forceRight_N = 0;
 
     isrTickCount++;
 
