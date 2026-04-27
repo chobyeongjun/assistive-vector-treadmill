@@ -251,21 +251,8 @@ void startLogging() {
 
 void stopLogging() {
     isLogging = false;
-
-    // 남은 버퍼 모두 기록
-    processLogBuffer();
-
-    if (dataFile) {
-        dataFile.flush();
-        dataFile.close();
-    }
-
-    Serial.print("[SD] Logging stopped: ");
-    Serial.println(filename);
-
-    char resp[48];
-    snprintf(resp, sizeof(resp), "LOG_STOP:%s", filename);
-    sendBleResponse(resp);
+    logPausedByGUI = true;
+    // 파일 닫기는 processLogBuffer()에서 버퍼 소진 후 비동기 처리
 }
 
 void processLogBuffer() {
@@ -304,6 +291,18 @@ void processLogBuffer() {
         dataFile.flush();
         flushCount = 0;
         lastFlushMs = now;
+    }
+
+    // 로깅 중지 후 버퍼 소진 완료 → 파일 닫기
+    if (!isLogging && logPausedByGUI && dataFile && logTail == logHead) {
+        dataFile.flush();
+        dataFile.close();
+        Serial.print("[SD] Logging stopped: ");
+        Serial.println(filename);
+        Serial.println("__LOG_STOPPED__");
+        char resp[48];
+        snprintf(resp, sizeof(resp), "LOG_STOP:%s", filename);
+        sendBleResponse(resp);
     }
 }
 
@@ -363,9 +362,12 @@ void handleSerialCmd(String cmd) {
         return;
     }
     if (cmd == "logstop" || cmd == "stop_log") {
-        if (isLogging) stopLogging();
-        logPausedByGUI = true;
-        Serial.println("__LOG_STOPPED__");
+        if (isLogging) {
+            stopLogging();  // 플래그만 세움 → processLogBuffer()에서 비동기 close + __LOG_STOPPED__
+        } else {
+            logPausedByGUI = true;
+            if (!dataFile) Serial.println("__LOG_STOPPED__");  // 이미 닫혀있으면 즉시 응답
+        }
         return;
     }
     if (SDTransfer::handleCommand(cmd, isLogging)) return;

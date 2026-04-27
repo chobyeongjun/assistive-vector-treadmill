@@ -165,8 +165,18 @@ class TeensyLink:
         self._send("stop_log")   # Treadmill_main
         self._send("logstop")    # Loadcell_Monitor
         print("  로깅 중지 중...", end=" ", flush=True)
-        time.sleep(2.5)          # 펌웨어 SD flush + 명령 처리 대기
-        self._flush()            # 누적된 출력 버림
+        # __LOG_STOPPED__ 수신 대기 (최대 15s — 대용량 파일 flush 고려)
+        deadline = time.time() + 15.0
+        while time.time() < deadline:
+            line = self._readline_timeout()
+            if line is None:
+                continue
+            if "__LOG_STOPPED__" in line:
+                break
+        else:
+            print("(타임아웃) ", end="")
+        time.sleep(0.3)
+        self._flush()
         print("완료")
 
     def start_logging(self):
