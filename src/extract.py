@@ -88,9 +88,30 @@ def auto_detect_port(list_ports):
 class TeensyLink:
     def __init__(self, port: str, baud: int = BAUD, timeout: float = TIMEOUT):
         serial, _ = _import_serial()
-        self.ser = serial.Serial(port, baud, timeout=0.1)
+        import threading
         self.timeout = timeout
-        time.sleep(1.5)
+        self.ser = None
+        result = [None]
+
+        def _open():
+            try:
+                result[0] = serial.Serial(port, baud, timeout=0.1,
+                                          exclusive=False)
+            except Exception as e:
+                result[0] = e
+
+        t = threading.Thread(target=_open, daemon=True)
+        t.start()
+        t.join(timeout=5.0)
+
+        if t.is_alive():
+            sys.exit(f"[ERROR] 포트 열기 실패 (5초 타임아웃). "
+                     f"Arduino IDE나 GUI가 {port} 를 점유 중인지 확인하세요.")
+        if isinstance(result[0], Exception):
+            sys.exit(f"[ERROR] {result[0]}")
+
+        self.ser = result[0]
+        time.sleep(0.5)
         self._flush()
 
     def _flush(self):
