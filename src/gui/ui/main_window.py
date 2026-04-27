@@ -224,7 +224,8 @@ class MainWindow(QMainWindow):
         """데이터 수신 - 큐에 쌓기만 함 (처리는 타이머에서)"""
         if 'SR:' in data:
             self._handle_response_packet(data)
-        if 'SE' in data:
+        # 'SE' 단독 체크는 센서 패킷에도 오발동 가능 — 행 단위로 체크
+        if '\nSE' in data or data.startswith('SE'):
             self._handle_error_packet(data)
         self._raw_data_queue.append(data)
 
@@ -310,16 +311,21 @@ class MainWindow(QMainWindow):
     # Periodic Updates (preserved exactly - 7 optimizations)
     # =========================================================
 
-    def _process_and_update(self):
-        """통합 업데이트 (30Hz) - 큐 전체 처리 + 조건부 렌더링"""
-        has_new_data = False
+    # 한 프레임(33ms)에 처리할 큐 항목 최대치 — burst 시 타이머 블로킹 방지
+    _MAX_PROCESS_PER_FRAME = 20
 
-        while self._raw_data_queue:
+    def _process_and_update(self):
+        """통합 업데이트 (30Hz) - 최대 20개/프레임 처리 + 조건부 렌더링"""
+        has_new_data = False
+        processed = 0
+
+        while self._raw_data_queue and processed < self._MAX_PROCESS_PER_FRAME:
             data = self._raw_data_queue.popleft()
             results = self._data_parser.feed(data)
             for walker_data in results:
                 self.plot_widget.add_data(walker_data)
                 has_new_data = True
+            processed += 1
 
         if has_new_data:
             self.plot_widget.update_plots()

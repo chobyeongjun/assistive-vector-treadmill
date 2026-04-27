@@ -62,9 +62,8 @@ class BleClientThread(QThread):
     RECONNECT_BACKOFF = 1.5       # 백오프 배수
 
     # Watchdog 설정
-    WATCHDOG_INTERVAL = 2.0       # 2초마다 연결 상태 확인 (빠른 감지)
-    DATA_TIMEOUT = 30.0           # 30초 데이터 없으면 연결 끊김으로 판단
-                                  # (스트리밍 OFF 상태나 실험 사이 잠깐 멈춤에 watchdog 오발동 방지)
+    WATCHDOG_INTERVAL = 2.0       # 2초마다 연결 상태 확인
+    DATA_TIMEOUT = 5.0            # 5초 데이터 없으면 연결 끊김으로 판단 (빠른 재연결)
 
     # Heartbeat 설정 (BLE 라디오 링크 유지 + DATA_TIMEOUT 워치독 안정화)
     HEARTBEAT_INTERVAL = 1.0      # 1초마다 ping 전송

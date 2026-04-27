@@ -291,8 +291,8 @@ class SinglePlot(QWidget):
         self.plot.setClipToView(True)
         self.plot.setDownsampling(auto=True, mode='peak')
 
-        # ★ X축 auto-range 활성화 (deque maxlen으로 자연 스크롤)
-        self.plot.enableAutoRange(axis='x', enable=True)
+        # X 범위는 batch_update에서 setXRange로 직접 제어 (autoRange 재계산 비용 제거)
+        self.plot.enableAutoRange(axis='x', enable=False)
 
         if self._y_range:
             self.plot.setYRange(*self._y_range)
@@ -319,21 +319,19 @@ class SinglePlot(QWidget):
         if name in self._curves:
             self._curves[name].setData(x_data, y_data)
 
-    def batch_update(self, updates: list):
-        """★ 배치 업데이트: N번 autoRange 재계산 → 1번으로 감소
+    def batch_update(self, updates: list, x_end: int = None):
+        """배치 업데이트 — autoRange 토글 없이 고정 X range 직접 설정.
 
-        setData() 호출 시마다 ViewBox.updateAutoRange()가 발동되어
-        모든 커브의 dataBounds()를 순회. 4개 커브면 4×4=16번 순회.
-        배치 처리하면 1×4=4번으로 감소 (4배 빠름).
-
-        Args:
-            updates: [(curve_name, x_data, y_data), ...]
+        enableAutoRange(True) 호출 시 ViewBox.updateAutoRange()가 즉시 발동되어
+        모든 커브 dataBounds()를 순회하는 비용(30Hz × 4커브 = 매 33ms 스파이크)을 제거.
+        대신 x_end를 받아 setXRange로 O(1) 범위 설정.
         """
-        self.plot.enableAutoRange(axis='x', enable=False)
         for name, x_data, y_data in updates:
             if name in self._curves:
                 self._curves[name].setData(x_data, y_data)
-        self.plot.enableAutoRange(axis='x', enable=True)
+        if x_end is not None:
+            x_start = max(0, x_end - PlotTabWidget.BUFFER_SIZE)
+            self.plot.setXRange(x_start, x_end, padding=0.02)
 
 
 class PlotTabWidget(QWidget):
@@ -439,46 +437,44 @@ class PlotTabWidget(QWidget):
         return arr
 
     def update_plots(self):
-        """현재 탭만 업데이트 - batch_update로 autoRange 중복 재계산 방지"""
+        """현재 탭만 업데이트 — 탭 인덱스 기반, 고정 X range로 autoRange 재계산 제거."""
         b = self._buffers
         if len(b['time']) < 2:
             return
 
-        # GCP 업데이트 (콜백 방식 - RealtimeMode에서 GCP 원형 게이지 직접 업데이트)
+        # GCP 콜백 (RealtimeMode 원형 게이지)
         if b['l_gcp'] and b['r_gcp'] and self._gcp_callback:
             self._gcp_callback(b['l_gcp'][-1], b['r_gcp'][-1])
 
-        # 현재 탭만 업데이트
         current = self.tab_widget.currentIndex()
-        tab_text = self.tab_widget.tabText(current)
-
         time_arr = self._to_array(b['time'])
+        x_end = int(time_arr[-1]) if len(time_arr) > 0 else None
 
-        if "IMU" in tab_text and "Gyro" not in tab_text:
-            self.imu_plot.batch_update([
-                ("L Pitch", time_arr, self._to_array(b['l_pitch'])),
-                ("R Pitch", time_arr, self._to_array(b['r_pitch'])),
-            ])
-
-        elif "Force" in tab_text:
+        if current == 0:  # Force
             if self._mode == 0:
                 self.force_plot.batch_update([
                     ("L Desired", time_arr, self._to_array(b['l_des_force'])),
-                    ("L Actual", time_arr, self._to_array(b['l_act_force'])),
+                    ("L Actual",  time_arr, self._to_array(b['l_act_force'])),
                     ("R Desired", time_arr, self._to_array(b['r_des_force'])),
-                    ("R Actual", time_arr, self._to_array(b['r_act_force'])),
-                ])
+                    ("R Actual",  time_arr, self._to_array(b['r_act_force'])),
+                ], x_end=x_end)
             else:
                 self.force_plot.batch_update([
                     ("L Force", time_arr, self._to_array(b['l_act_force'])),
                     ("R Force", time_arr, self._to_array(b['r_act_force'])),
-                ])
+                ], x_end=x_end)
 
-        elif "Gyro" in tab_text:
+        elif current == 1:  # IMU Pitch
+            self.imu_plot.batch_update([
+                ("L Pitch", time_arr, self._to_array(b['l_pitch'])),
+                ("R Pitch", time_arr, self._to_array(b['r_pitch'])),
+            ], x_end=x_end)
+
+        elif current == 2:  # Gyro
             self.gyro_plot.batch_update([
                 ("L Gyro", time_arr, self._to_array(b['l_gyro'])),
                 ("R Gyro", time_arr, self._to_array(b['r_gyro'])),
-            ])
+            ], x_end=x_end)
 
     def set_gcp_callback(self, callback):
         """Set callback for GCP updates: callback(l_gcp, r_gcp)"""
