@@ -107,15 +107,20 @@ def auto_detect_port(list_ports):
 
 class TeensyLink:
     def __init__(self, port: str, baud: int = BAUD, timeout: float = TIMEOUT):
-        serial, _ = _import_serial()
-        import threading
+        self.port = port
+        self.baud = baud
         self.timeout = timeout
         self.ser = None
+        self._open_port()
+
+    def _open_port(self):
+        serial, _ = _import_serial()
+        import threading
         result = [None]
 
         def _open():
             try:
-                result[0] = serial.Serial(port, baud, timeout=0.1,
+                result[0] = serial.Serial(self.port, self.baud, timeout=0.1,
                                           exclusive=False)
             except Exception as e:
                 result[0] = e
@@ -126,13 +131,35 @@ class TeensyLink:
 
         if t.is_alive():
             sys.exit(f"[ERROR] 포트 열기 실패 (5초 타임아웃). "
-                     f"Arduino IDE나 GUI가 {port} 를 점유 중인지 확인하세요.")
+                     f"Arduino IDE나 GUI가 {self.port} 를 점유 중인지 확인하세요.")
         if isinstance(result[0], Exception):
             sys.exit(f"[ERROR] {result[0]}")
 
         self.ser = result[0]
         time.sleep(0.5)
         self._flush()
+
+    def _reconnect(self, max_wait: float = 8.0) -> bool:
+        serial, _ = _import_serial()
+        print(f"[!] 재연결 대기 중...", end=" ", flush=True)
+        try:
+            self.ser.close()
+        except Exception:
+            pass
+        deadline = time.time() + max_wait
+        while time.time() < deadline:
+            time.sleep(1.0)
+            try:
+                self.ser = serial.Serial(self.port, self.baud, timeout=0.1,
+                                         exclusive=False)
+                time.sleep(0.5)
+                self._flush()
+                print("재연결 완료")
+                return True
+            except Exception:
+                pass
+        print("재연결 실패")
+        return False
 
     def _flush(self):
         self.ser.reset_input_buffer()
@@ -148,8 +175,9 @@ class TeensyLink:
         while time.time() < deadline:
             try:
                 c = self.ser.read(1)
-            except _serial.SerialException as e:
-                print(f"\n[DISCONNECT] {e}")
+            except _serial.SerialException:
+                print(f"\n[DISCONNECT]", end=" ")
+                self._reconnect()
                 return None
             if not c:
                 continue
@@ -220,24 +248,31 @@ class TeensyLink:
                         pass
         return files
 
-    def get_file(self, filename: str, out_dir: Path):
-        self._flush()
-        self._send(f"get {filename}")
+    def get_file(self, filename: str, out_dir: Path, retries: int = 2):
+        for attempt in range(retries + 1):
+            if attempt > 0:
+                print(f"  재시도 {attempt}/{retries}...")
+                time.sleep(1.0)
 
-        header = None
-        deadline = time.time() + self.timeout
-        while time.time() < deadline:
-            line = self._readline_timeout()
-            if line is None:
-                break
-            if line.startswith("__ERROR__"):
-                print(f"[ERROR] {line}")
-                return None
-            if "__FILE_START__" in line:
-                header = line
-                break
+            self._flush()
+            self._send(f"get {filename}")
 
-        if not header:
+            header = None
+            deadline = time.time() + self.timeout
+            while time.time() < deadline:
+                line = self._readline_timeout()
+                if line is None:
+                    break
+                if line.startswith("__ERROR__"):
+                    print(f"[ERROR] {line}")
+                    break
+                if "__FILE_START__" in line:
+                    header = line
+                    break
+
+            if header:
+                break
+        else:
             print(f"[ERROR] No response for {filename}")
             return None
 
