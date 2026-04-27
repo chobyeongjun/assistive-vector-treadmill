@@ -142,10 +142,15 @@ class TeensyLink:
         self.ser.flush()
 
     def _readline_timeout(self):
+        import serial as _serial
         deadline = time.time() + self.timeout
         buf = b""
         while time.time() < deadline:
-            c = self.ser.read(1)
+            try:
+                c = self.ser.read(1)
+            except _serial.SerialException as e:
+                print(f"\n[DISCONNECT] {e}")
+                return None
             if not c:
                 continue
             if c == b"\n":
@@ -347,7 +352,9 @@ def main():
         elif args.action == "all":
             # 파일 목록
             files = link.list_files()
-            csv_files = [f for f in files if f["name"].upper().endswith(".CSV")]
+            csv_files = [f for f in files
+                         if f["name"].upper().endswith(".CSV")
+                         and not f["name"].startswith("._")]
             if not csv_files:
                 print("No CSV files on SD.")
             else:
