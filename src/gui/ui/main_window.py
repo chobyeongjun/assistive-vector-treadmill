@@ -40,7 +40,8 @@ class MainWindow(QMainWindow):
     - 데이터 처리: 타이머 콜백에서 큐 비우면서 처리 (throttled)
     """
 
-    PLOT_UPDATE_INTERVAL_MS = 33   # 33ms = 30Hz GUI 업데이트
+    DATA_PROCESS_INTERVAL_MS = 10  # 10ms = 100Hz 데이터 처리 (렌더링 없음)
+    PLOT_UPDATE_INTERVAL_MS = 100  # 100ms = 10Hz 렌더링 (데이터 처리와 분리)
 
     def __init__(self):
         super().__init__()
@@ -67,12 +68,20 @@ class MainWindow(QMainWindow):
         # 시그널 연결
         self._connect_signals()
 
+        # 렌더링 대기 플래그
+        self._has_new_data = False
+
         # BLE 스레드 시작
         self._ble_client.start()
 
-        # 통합 업데이트 타이머 (데이터 처리 + 플롯 업데이트)
+        # 데이터 처리 타이머 — 파싱만, 렌더링 없음 (10ms = 100Hz)
+        self._data_timer = QTimer()
+        self._data_timer.timeout.connect(self._process_data)
+        self._data_timer.start(self.DATA_PROCESS_INTERVAL_MS)
+
+        # 플롯 렌더링 타이머 — 데이터 처리와 완전 분리 (100ms = 10Hz)
         self._plot_timer = QTimer()
-        self._plot_timer.timeout.connect(self._process_and_update)
+        self._plot_timer.timeout.connect(self._update_render)
         self._plot_timer.start(self.PLOT_UPDATE_INTERVAL_MS)
 
         # 상태 업데이트 타이머 (500ms)
@@ -311,24 +320,24 @@ class MainWindow(QMainWindow):
     # Periodic Updates (preserved exactly - 7 optimizations)
     # =========================================================
 
-    # 한 프레임(33ms)에 처리할 큐 항목 최대치 — burst 시 타이머 블로킹 방지
-    _MAX_PROCESS_PER_FRAME = 20
+    def _process_data(self):
+        """데이터 처리 전용 (10ms = 100Hz) — 파싱 + 버퍼 append만, 렌더링 없음.
 
-    def _process_and_update(self):
-        """통합 업데이트 (30Hz) - 최대 20개/프레임 처리 + 조건부 렌더링"""
-        has_new_data = False
-        processed = 0
-
-        while self._raw_data_queue and processed < self._MAX_PROCESS_PER_FRAME:
+        큐를 전부 소진하여 데이터 손실을 막는다.
+        pyqtgraph setData는 여기서 호출하지 않으므로 GUI 블로킹 없음.
+        """
+        while self._raw_data_queue:
             data = self._raw_data_queue.popleft()
             results = self._data_parser.feed(data)
             for walker_data in results:
                 self.plot_widget.add_data(walker_data)
-                has_new_data = True
-            processed += 1
+                self._has_new_data = True
 
-        if has_new_data:
+    def _update_render(self):
+        """플롯 렌더링 전용 (100ms = 10Hz) — 새 데이터 있을 때만 화면 갱신."""
+        if self._has_new_data:
             self.plot_widget.update_plots()
+            self._has_new_data = False
 
     def _on_mode_changed_status(self, mode: int):
         """Update realtime_mode status when control mode changes"""
@@ -357,6 +366,7 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event):
+        self._data_timer.stop()
         self._plot_timer.stop()
         self._status_timer.stop()
         self._ble_client.stop()
