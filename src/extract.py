@@ -367,10 +367,8 @@ def main():
                         link.delete_file(f["name"])
                 print(f"\n[OK] 저장 완료 → {out_dir.resolve()}")
 
-            # 4) 로깅 재시작 여부
-            ans = input("\n로깅 재시작할까요? [Y/n] > ").strip().lower()
-            if ans in ("", "y"):
-                link.start_logging()
+            # 4) 로깅 재시작
+            link.start_logging()
 
     finally:
         link.close()
