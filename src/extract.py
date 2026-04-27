@@ -161,16 +161,21 @@ class TeensyLink:
         return data
 
     def stop_logging(self):
+        self._flush()
         self._send("stop_log")   # Treadmill_main
-        self._send("logstop")    # Loadcell_Monitor (unknown cmd on main = harmless)
-        deadline = time.time() + 3
-        while time.time() < deadline:
-            line = self._readline_timeout()
-            if line is None:
-                break
-            if "__LOG_STOPPED__" in line or "Logging stopped" in line:
-                print("[OK] Logging stopped")
-                return
+        self._send("logstop")    # Loadcell_Monitor
+        print("  로깅 중지 중...", end=" ", flush=True)
+        time.sleep(2.5)          # 펌웨어 SD flush + 명령 처리 대기
+        self._flush()            # 누적된 출력 버림
+        print("완료")
+
+    def start_logging(self):
+        self._flush()
+        self._send("s")          # Treadmill_main
+        self._send("log")        # Loadcell_Monitor
+        time.sleep(1.0)
+        self._flush()
+        print("  로깅 시작됨")
 
     def list_files(self) -> list:
         self._flush()
@@ -274,7 +279,7 @@ class TeensyLink:
 def main():
     parser = argparse.ArgumentParser(
         description="Extract SD card files from Teensy over USB serial")
-    parser.add_argument("action", choices=["ls", "get", "all", "del"],
+    parser.add_argument("action", choices=["ls", "get", "all", "del", "log"],
                         nargs="?", default="all")
     parser.add_argument("filename", nargs="?", help="For get/del")
     parser.add_argument("--port")
@@ -322,8 +327,18 @@ def main():
                 sys.exit("Specify filename")
             link.delete_file(args.filename)
 
+        elif args.action == "log":
+            ans = input("로깅 [1] 중지  [2] 시작  > ").strip()
+            if ans == "1":
+                link.stop_logging()
+            elif ans == "2":
+                link.start_logging()
+
         elif args.action == "all":
+            # 1) 로깅 중지
             link.stop_logging()
+
+            # 2) 파일 목록
             files = link.list_files()
             csv_files = [f for f in files if f["name"].upper().endswith(".CSV")]
             if not csv_files:
@@ -333,7 +348,7 @@ def main():
                 print("-" * 36)
                 for i, f in enumerate(csv_files):
                     print(f"[{i}] {f['name']:<20} {f['size']:>10,}")
-                print("\n전체 다운로드: Enter  |  선택 다운로드: 번호 입력 (예: 0 2 3)")
+                print("\n전체 다운로드: Enter  |  선택: 번호 입력 (예: 0 2 3)")
                 sel = input("> ").strip()
                 if sel == "":
                     selected = csv_files
@@ -343,12 +358,19 @@ def main():
                         selected = [csv_files[i] for i in idxs if 0 <= i < len(csv_files)]
                     except Exception:
                         selected = csv_files
+
+                # 3) 다운로드
                 print(f"[+] {len(selected)}개 다운로드")
                 for f in selected:
                     path = link.get_file(f["name"], out_dir)
                     if args.delete and path:
                         link.delete_file(f["name"])
                 print(f"\n[OK] 저장 완료 → {out_dir.resolve()}")
+
+            # 4) 로깅 재시작 여부
+            ans = input("\n로깅 재시작할까요? [Y/n] > ").strip().lower()
+            if ans in ("", "y"):
+                link.start_logging()
 
     finally:
         link.close()
