@@ -345,10 +345,7 @@ def main():
                 link.start_logging()
 
         elif args.action == "all":
-            # 1) 로깅 중지
-            link.stop_logging()
-
-            # 2) 파일 목록
+            # 파일 목록
             files = link.list_files()
             csv_files = [f for f in files if f["name"].upper().endswith(".CSV")]
             if not csv_files:
@@ -376,9 +373,6 @@ def main():
                     if args.delete and path:
                         link.delete_file(f["name"])
                 print(f"\n[OK] 저장 완료 → {out_dir.resolve()}")
-
-            # 4) 로깅 재시작
-            link.start_logging()
 
     finally:
         link.close()

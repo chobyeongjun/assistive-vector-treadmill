@@ -10,10 +10,7 @@ bool SDTransfer::handleCommand(const String& cmd, bool isLogging) {
         return true;
     }
     if (cmd.startsWith("get ")) {
-        if (isLogging) {
-            Serial.println("__ERROR__: Stop logging first");
-            return true;
-        }
+        // isLogging 체크 없음: 로깅 중 파일과 다운로드 대상 파일이 달라 충돌 없음
         String fname = cmd.substring(4);
         fname.trim();
         getFile(fname);
