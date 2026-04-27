@@ -227,7 +227,8 @@ class TeensyLink:
 def main():
     parser = argparse.ArgumentParser(
         description="Extract SD card files from Teensy over USB serial")
-    parser.add_argument("action", choices=["ls", "get", "all", "del"])
+    parser.add_argument("action", choices=["ls", "get", "all", "del"],
+                        nargs="?", default="all")
     parser.add_argument("filename", nargs="?", help="For get/del")
     parser.add_argument("--port")
     parser.add_argument("--baud", type=int, default=BAUD)
