@@ -55,10 +55,10 @@
 // ================================================================
 
 #define WALKER_DATA_COUNT 11   // 전송할 데이터 개수 (IMU + Force + Mark)
-#define BLE_SEND_PERIOD_MS 20  // 전송 주기 (20ms = 50Hz)
-                               // ★ 9ms(111Hz) → 20ms(50Hz)로 변경
-                               // 이유: 패킷 ~120bytes × 111Hz = 13,320 B/s > UART 11,520 B/s
-                               //       패킷 ~120bytes × 50Hz  =  6,000 B/s < UART 11,520 B/s
+#define BLE_SEND_PERIOD_MS 40  // 전송 주기 (40ms = 25Hz)
+                               // IMU 움직임 시 gyro 값 증가 → 패킷 80-90B
+                               // 패킷 ~90bytes × 50Hz = 4,500 B/s → Nano BLE TX 버퍼 포화
+                               // 패킷 ~90bytes × 25Hz = 2,250 B/s → 안정 마진 확보
 
 // ================================================================
 // [3] 전역 변수 선언 (extern)
