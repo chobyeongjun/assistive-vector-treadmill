@@ -173,14 +173,17 @@ class TopBarWidget(QWidget):
         self.incline_combo.setStyleSheet(combo_style)
         row1.addWidget(self.incline_combo)
 
-        # Speed (TD only)
-        self.speed_combo = QComboBox()
-        for spd in ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0']:
-            self.speed_combo.addItem(spd)
-        self.speed_combo.setCurrentText('1.0')
-        self.speed_combo.setFixedSize(48, 22)
-        self.speed_combo.setStyleSheet(combo_style)
-        row1.addWidget(self.speed_combo)
+        # Speed (TD only) — free text input, e.g. 0.5, 0.8, 1.0
+        self.speed_input = QLineEdit()
+        self.speed_input.setPlaceholderText("m/s")
+        self.speed_input.setText("0.5")
+        self.speed_input.setFixedSize(48, 22)
+        self.speed_input.setStyleSheet(
+            f"background:{C['card']}; color:{C['text1']}; "
+            f"border:1px solid {C['border']}; border-radius:3px; "
+            f"font-size:10px; padding:1px 4px;"
+        )
+        row1.addWidget(self.speed_input)
 
         # Device
         self.device_combo = QComboBox()
@@ -238,7 +241,7 @@ class TopBarWidget(QWidget):
         self.subject_input.textChanged.connect(self._update_filename)
         self.modality_combo.currentTextChanged.connect(self._on_modality_changed)
         self.incline_combo.currentTextChanged.connect(self._update_filename)
-        self.speed_combo.currentTextChanged.connect(self._update_filename)
+        self.speed_input.textChanged.connect(self._update_filename)
         self.device_combo.currentTextChanged.connect(self._on_device_changed)
         self.attachment_combo.currentTextChanged.connect(self._update_filename)
         self.angle_combo.currentTextChanged.connect(self._update_filename)
@@ -294,7 +297,7 @@ class TopBarWidget(QWidget):
     def _on_modality_changed(self, modality: str):
         is_td = modality == 'TD'
         self.incline_combo.setVisible(is_td)
-        self.speed_combo.setVisible(is_td)
+        self.speed_input.setVisible(is_td)
         self._update_filename()
 
     def _on_device_changed(self, device: str):
@@ -314,7 +317,8 @@ class TopBarWidget(QWidget):
         parts = [today, 'Robot', subject, modality]
         if modality == 'TD':
             parts.append(self.incline_combo.currentText())
-            parts.append(self.speed_combo.currentText().replace('.', '_'))
+            speed_raw = self.speed_input.text().strip() or '1_0'
+            parts.append(speed_raw.replace('.', '_'))
         parts.append(device)
         if device == 'walker':
             parts.append(self.attachment_combo.currentText())
