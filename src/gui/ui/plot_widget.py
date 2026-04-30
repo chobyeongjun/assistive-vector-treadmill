@@ -12,7 +12,7 @@ from typing import Optional, Dict
 import numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
-    QFrame, QDoubleSpinBox, QPushButton, QLineEdit, QSizePolicy
+    QFrame, QDoubleSpinBox, QPushButton, QLineEdit, QSizePolicy, QComboBox
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPainter, QColor, QPen, QPixmap
@@ -122,33 +122,129 @@ class TopBarWidget(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(8)
 
-        # File Logging
+        # File Logging — Experiment Setup
         file_frame = QFrame()
         file_frame.setObjectName("GlassCard")
-        file_layout = QHBoxLayout(file_frame)
-        file_layout.setContentsMargins(8, 6, 8, 6)
-        file_layout.setSpacing(6)
+        file_outer = QVBoxLayout(file_frame)
+        file_outer.setContentsMargins(8, 5, 8, 5)
+        file_outer.setSpacing(3)
+
+        # Row 1: FILE label + experiment params
+        row1 = QHBoxLayout()
+        row1.setSpacing(4)
 
         file_label = QLabel("FILE")
         file_label.setStyleSheet(
             f"color:{C['muted']}; font-size:9px; font-weight:700; "
             f"letter-spacing:1px; background:transparent; border:none;"
         )
-        file_layout.addWidget(file_label)
+        row1.addWidget(file_label)
 
-        self.filename_input = QLineEdit()
-        self.filename_input.setPlaceholderText("(auto if empty)")
-        self.filename_input.setMaxLength(20)
-        self.filename_input.setMinimumWidth(100)
-        self.filename_input.setMaximumWidth(160)
-        self.filename_input.setFixedHeight(26)
-        file_layout.addWidget(self.filename_input, 1)
+        combo_style = (
+            f"QComboBox {{ background:{C['card']}; color:{C['text1']}; "
+            f"border:1px solid {C['border']}; border-radius:3px; "
+            f"font-size:10px; padding:1px 4px; }}"
+            f"QComboBox::drop-down {{ border:none; width:14px; }}"
+        )
+
+        # Subject ID (text — 사람마다 다름)
+        self.subject_input = QLineEdit()
+        self.subject_input.setPlaceholderText("ID")
+        self.subject_input.setMaxLength(10)
+        self.subject_input.setFixedSize(46, 22)
+        self.subject_input.setStyleSheet(
+            f"background:{C['card']}; color:{C['text1']}; "
+            f"border:1px solid {C['border']}; border-radius:3px; "
+            f"font-size:10px; padding:1px 4px;"
+        )
+        row1.addWidget(self.subject_input)
+
+        # Modality
+        self.modality_combo = QComboBox()
+        self.modality_combo.addItems(['TD', 'OG'])
+        self.modality_combo.setFixedSize(46, 22)
+        self.modality_combo.setStyleSheet(combo_style)
+        row1.addWidget(self.modality_combo)
+
+        # Incline (TD only)
+        self.incline_combo = QComboBox()
+        self.incline_combo.addItems(['level', 'incline'])
+        self.incline_combo.setFixedSize(58, 22)
+        self.incline_combo.setStyleSheet(combo_style)
+        row1.addWidget(self.incline_combo)
+
+        # Speed (TD only)
+        self.speed_combo = QComboBox()
+        for spd in ['2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0']:
+            self.speed_combo.addItem(spd)
+        self.speed_combo.setCurrentText('3.0')
+        self.speed_combo.setFixedSize(48, 22)
+        self.speed_combo.setStyleSheet(combo_style)
+        row1.addWidget(self.speed_combo)
+
+        # Device
+        self.device_combo = QComboBox()
+        self.device_combo.addItems(['walker', 'noassist'])
+        self.device_combo.setFixedSize(70, 22)
+        self.device_combo.setStyleSheet(combo_style)
+        row1.addWidget(self.device_combo)
+
+        # Attachment: high / middle / low (walker only)
+        self.attachment_combo = QComboBox()
+        self.attachment_combo.addItems(['high', 'middle', 'low'])
+        self.attachment_combo.setFixedSize(62, 22)
+        self.attachment_combo.setStyleSheet(combo_style)
+        row1.addWidget(self.attachment_combo)
+
+        # Angle: 0 / 30 (walker only)
+        self.angle_combo = QComboBox()
+        self.angle_combo.addItems(['0', '30'])
+        self.angle_combo.setFixedSize(40, 22)
+        self.angle_combo.setStyleSheet(combo_style)
+        row1.addWidget(self.angle_combo)
+
+        # Weight bearing: wb / nwb (noassist only, hidden by default)
+        self.wb_combo = QComboBox()
+        self.wb_combo.addItems(['wb', 'nwb'])
+        self.wb_combo.setFixedSize(48, 22)
+        self.wb_combo.setStyleSheet(combo_style)
+        self.wb_combo.setVisible(False)
+        row1.addWidget(self.wb_combo)
+
+        row1.addStretch()
+        file_outer.addLayout(row1)
+
+        # Row 2: generated filename (read-only) + Save
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+
+        self._generated_filename = ''
+        self.filename_display = QLabel()
+        self.filename_display.setStyleSheet(
+            f"color:{C['text2']}; font-size:9px; font-family:monospace; "
+            f"background:transparent; border:none;"
+        )
+        row2.addWidget(self.filename_display, 1)
 
         self.save_btn = QPushButton("Save")
         self.save_btn.setObjectName("AccentBtn")
-        self.save_btn.setFixedSize(50, 26)
+        self.save_btn.setFixedSize(50, 22)
         self.save_btn.clicked.connect(self._on_save_clicked)
-        file_layout.addWidget(self.save_btn)
+        row2.addWidget(self.save_btn)
+
+        file_outer.addLayout(row2)
+
+        # Connect signals
+        self.subject_input.textChanged.connect(self._update_filename)
+        self.modality_combo.currentTextChanged.connect(self._on_modality_changed)
+        self.incline_combo.currentTextChanged.connect(self._update_filename)
+        self.speed_combo.currentTextChanged.connect(self._update_filename)
+        self.device_combo.currentTextChanged.connect(self._on_device_changed)
+        self.attachment_combo.currentTextChanged.connect(self._update_filename)
+        self.angle_combo.currentTextChanged.connect(self._update_filename)
+        self.wb_combo.currentTextChanged.connect(self._update_filename)
+
+        self._update_filename()  # initial render
 
         file_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         layout.addWidget(file_frame)
@@ -195,9 +291,42 @@ class TopBarWidget(QWidget):
         self.setFixedHeight(140)
         self._original_pixmap = None
 
+    def _on_modality_changed(self, modality: str):
+        is_td = modality == 'TD'
+        self.incline_combo.setVisible(is_td)
+        self.speed_combo.setVisible(is_td)
+        self._update_filename()
+
+    def _on_device_changed(self, device: str):
+        is_walker = device == 'walker'
+        self.attachment_combo.setVisible(is_walker)
+        self.angle_combo.setVisible(is_walker)
+        self.wb_combo.setVisible(not is_walker)
+        self._update_filename()
+
+    def _update_filename(self):
+        from datetime import date
+        today = date.today().strftime('%Y%m%d')
+        subject = self.subject_input.text().strip() or 'ID'
+        modality = self.modality_combo.currentText()
+        device = self.device_combo.currentText()
+
+        parts = [today, 'Robot', subject, modality]
+        if modality == 'TD':
+            parts.append(self.incline_combo.currentText())
+            parts.append(self.speed_combo.currentText().replace('.', '_'))
+        parts.append(device)
+        if device == 'walker':
+            parts.append(self.attachment_combo.currentText())
+            parts.append(self.angle_combo.currentText())
+        else:
+            parts.append(self.wb_combo.currentText())
+
+        self._generated_filename = '_'.join(parts)
+        self.filename_display.setText(self._generated_filename)
+
     def _on_save_clicked(self):
-        self.save_requested.emit(self.filename_input.text().strip())
-        self.filename_input.clear()
+        self.save_requested.emit(self._generated_filename)
 
     def set_left_gcp(self, value: float):
         self.gcp_left.set_value(value)
