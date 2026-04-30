@@ -168,7 +168,7 @@ class TopBarWidget(QWidget):
 
         # Incline (TD only)
         self.incline_combo = QComboBox()
-        self.incline_combo.addItems(['level', 'incline'])
+        self.incline_combo.addItems(['level', 'incline', 'decline', 'stair_up', 'stair_down'])
         self.incline_combo.setFixedSize(58, 22)
         self.incline_combo.setStyleSheet(combo_style)
         row1.addWidget(self.incline_combo)
