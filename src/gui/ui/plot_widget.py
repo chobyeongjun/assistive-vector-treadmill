@@ -175,9 +175,9 @@ class TopBarWidget(QWidget):
 
         # Speed (TD only)
         self.speed_combo = QComboBox()
-        for spd in ['2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0']:
+        for spd in ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0']:
             self.speed_combo.addItem(spd)
-        self.speed_combo.setCurrentText('3.0')
+        self.speed_combo.setCurrentText('1.0')
         self.speed_combo.setFixedSize(48, 22)
         self.speed_combo.setStyleSheet(combo_style)
         row1.addWidget(self.speed_combo)
