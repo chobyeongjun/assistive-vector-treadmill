@@ -20,6 +20,10 @@
 import sys
 import asyncio
 import re
+from datetime import datetime
+
+def _ts() -> str:
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -39,7 +43,7 @@ NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 NUS_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # Notify (데이터 수신)
 NUS_RX_UUID      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # Write  (명령 전송)
 
-DEVICE_NAME = "Walker"  # BLE 디바이스 이름
+DEVICE_NAME = "Loadcell_BLE"  # BLE 디바이스 이름
 
 N_TO_KG = 1.0 / 9.80665  # N → kgf 변환
 
@@ -126,6 +130,7 @@ class BleWorker(QThread):
         asyncio.run(self._main_loop())
 
     async def _main_loop(self):
+        print(f"[{_ts()}][BLE] worker loop started")
         while self._running:
             if self._should_connect:
                 self._should_connect = False
@@ -138,20 +143,39 @@ class BleWorker(QThread):
             if self._send_cmd and self.client and self.client.is_connected:
                 cmd = self._send_cmd
                 self._send_cmd = None
+                print(f"[{_ts()}][CMD →] {cmd!r}")
                 try:
                     await self.client.write_gatt_char(
                         NUS_RX_UUID, (cmd + "\n").encode(), response=False
                     )
+                    print(f"[{_ts()}][CMD ✓] sent OK")
                 except Exception as e:
+                    print(f"[{_ts()}][CMD ✗] {type(e).__name__}: {e}")
                     self.signals.status_changed.emit(f"Send error: {e}")
+            elif self._send_cmd:
+                # 명령은 있지만 client 상태 이상
+                print(f"[{_ts()}][CMD ✗] cmd={self._send_cmd!r} but "
+                      f"client={self.client is not None} "
+                      f"connected={self.client.is_connected if self.client else 'N/A'}")
+                self._send_cmd = None
 
             await asyncio.sleep(0.05)
+        print(f"[{_ts()}][BLE] worker loop ended")
 
     async def _do_connect(self):
+        print(f"\n[{_ts()}][SCAN] ▶ start — target='{DEVICE_NAME}' timeout=5s")
         self.signals.status_changed.emit("Scanning...")
 
         try:
+            # ── 구간 1: BLE 스캔 ──────────────────────────────────────
             devices = await BleakScanner.discover(timeout=5.0)
+            named = [d for d in devices if d.name]
+            print(f"[{_ts()}][SCAN] total={len(devices)} named={len(named)}")
+            for d in named:
+                marker = ">>>" if DEVICE_NAME in d.name else "   "
+                rssi = getattr(d, "rssi", "?")
+                print(f"[{_ts()}][SCAN]  {marker} {d.name!r:30s}  {d.address}  RSSI={rssi}")
+
             target = None
             for d in devices:
                 if d.name and DEVICE_NAME in d.name:
@@ -159,52 +183,88 @@ class BleWorker(QThread):
                     break
 
             if not target:
+                avail = [d.name for d in named]
+                print(f"[{_ts()}][SCAN] ✗ NOT FOUND — available: {avail}")
                 self.signals.status_changed.emit(f"'{DEVICE_NAME}' not found. Retry.")
                 return
 
+            print(f"[{_ts()}][SCAN] ✓ found: {target.name!r} @ {target.address}")
+
+            # ── 구간 2: GATT 연결 ─────────────────────────────────────
+            print(f"[{_ts()}][CONNECT] ▶ BleakClient({target.address})")
             self.signals.status_changed.emit(f"Connecting to {target.name}...")
             self.client = BleakClient(target.address)
+
+            print(f"[{_ts()}][CONNECT] calling connect()...")
             await self.client.connect()
+            print(f"[{_ts()}][CONNECT] connect() returned — is_connected={self.client.is_connected}")
 
-            # Notify 구독
+            # ── 구간 3: Notify 구독 ───────────────────────────────────
+            print(f"[{_ts()}][CONNECT] start_notify TX={NUS_TX_UUID[:8]}...")
             await self.client.start_notify(NUS_TX_UUID, self._notification_handler)
+            print(f"[{_ts()}][CONNECT] ✓ notify subscribed")
 
-            # "start" 명령 전송 (BLE 스트림 활성화)
-            await self.client.write_gatt_char(
-                NUS_RX_UUID, b"start\n", response=False
-            )
+            # ── 구간 4: 초기 명령 전송 ───────────────────────────────
+            print(f"[{_ts()}][CONNECT] → 'start\\n'  (BLE stream ON)")
+            await self.client.write_gatt_char(NUS_RX_UUID, b"start\n", response=False)
 
-            # 현재 로깅 상태 쿼리 → LOG_ACTIVE:<name> 또는 LOG_IDLE 응답 유발
+            print(f"[{_ts()}][CONNECT] sleeping 0.1s before status query...")
             await asyncio.sleep(0.1)
-            await self.client.write_gatt_char(
-                NUS_RX_UUID, b"status\n", response=False
-            )
 
+            print(f"[{_ts()}][CONNECT] → 'status\\n'  (query log state)")
+            await self.client.write_gatt_char(NUS_RX_UUID, b"status\n", response=False)
+
+            # ── 구간 5: 완료 ──────────────────────────────────────────
+            print(f"[{_ts()}][CONNECT] ✓ READY — emitting connected")
             self.signals.status_changed.emit(f"Connected: {target.name}")
             self.signals.connected.emit()
 
         except Exception as e:
+            print(f"[{_ts()}][CONNECT] ✗ EXCEPTION {type(e).__name__}: {e}")
             self.signals.status_changed.emit(f"Connection failed: {e}")
 
     async def _do_disconnect(self):
+        print(f"\n[{_ts()}][DISCONNECT] ▶ user-requested")
         if self.client and self.client.is_connected:
             try:
-                await self.client.write_gatt_char(
-                    NUS_RX_UUID, b"stop\n", response=False
-                )
+                # ── 구간 1: BLE 스트림 끄기 ──────────────────────────
+                print(f"[{_ts()}][DISCONNECT] → 'stop\\n'")
+                await self.client.write_gatt_char(NUS_RX_UUID, b"stop\n", response=False)
+                print(f"[{_ts()}][DISCONNECT] sleeping 0.1s...")
                 await asyncio.sleep(0.1)
+                # ── 구간 2: GATT 연결 해제 ───────────────────────────
+                print(f"[{_ts()}][DISCONNECT] calling disconnect()...")
                 await self.client.disconnect()
-            except Exception:
-                pass
+                print(f"[{_ts()}][DISCONNECT] ✓ GATT disconnected")
+            except Exception as e:
+                print(f"[{_ts()}][DISCONNECT] ✗ {type(e).__name__}: {e}")
+        else:
+            state = "None" if self.client is None else "not connected"
+            print(f"[{_ts()}][DISCONNECT] client {state} — skip GATT ops")
         self.client = None
         self.signals.status_changed.emit("Disconnected")
         self.signals.disconnected.emit()
+        print(f"[{_ts()}][DISCONNECT] ✓ done")
 
     def _notification_handler(self, sender, data: bytearray):
+        # ── 구간: raw 수신 ────────────────────────────────────────────
+        hex_preview = data.hex()[:32] + ("…" if len(data) > 16 else "")
+        print(f"[{_ts()}][RECV ←] {len(data):3d}B | {hex_preview}")
+
         loadcell, responses = self.parser.feed(bytes(data))
-        for l_force, r_force in loadcell:
-            self.signals.data_received.emit(l_force, r_force)
+
+        # ── 구간: loadcell 데이터 (100패킷마다 1회 출력, 스팸 방지) ──
+        if loadcell:
+            self._pkt_count = getattr(self, "_pkt_count", 0) + len(loadcell)
+            if self._pkt_count % 100 == 0:
+                lf, rf = loadcell[-1]
+                print(f"[{_ts()}][DATA  ] #{self._pkt_count:6d} L={lf:7.2f}N R={rf:7.2f}N")
+            for l_force, r_force in loadcell:
+                self.signals.data_received.emit(l_force, r_force)
+
+        # ── 구간: 펌웨어 응답 (SR: 패킷) ─────────────────────────────
         for resp in responses:
+            print(f"[{_ts()}][RESP ←] {resp!r}")
             self.signals.response_received.emit(resp)
 
 
@@ -495,12 +555,6 @@ class MainWindow(QMainWindow):
         self.tare_btn.setEnabled(False)
         top.addWidget(self.tare_btn)
 
-        self.log_btn = QPushButton("Log Start")
-        self.log_btn.setStyleSheet(BTN_STYLE)
-        self.log_btn.clicked.connect(self.on_log_toggle)
-        self.log_btn.setEnabled(False)
-        top.addWidget(self.log_btn)
-
         self._is_logging = False
         main_layout.addLayout(top)
 
@@ -552,15 +606,21 @@ class MainWindow(QMainWindow):
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("파일명 (비우면 자동 번호, .CSV 자동 부여)")
         self.name_edit.setStyleSheet(EDIT_STYLE)
-        self.name_edit.returnPressed.connect(self.on_apply_name)
+        self.name_edit.returnPressed.connect(self.on_log_start)
         self.name_edit.setEnabled(False)
         log_row.addWidget(self.name_edit, stretch=1)
 
-        self.apply_name_btn = QPushButton("Apply Name")
-        self.apply_name_btn.setStyleSheet(BTN_STYLE)
-        self.apply_name_btn.clicked.connect(self.on_apply_name)
-        self.apply_name_btn.setEnabled(False)
-        log_row.addWidget(self.apply_name_btn)
+        self.log_start_btn = QPushButton("Start")
+        self.log_start_btn.setStyleSheet(BTN_STYLE)
+        self.log_start_btn.clicked.connect(self.on_log_start)
+        self.log_start_btn.setEnabled(False)
+        log_row.addWidget(self.log_start_btn)
+
+        self.log_stop_btn = QPushButton("Stop")
+        self.log_stop_btn.setStyleSheet(BTN_STYLE.replace("#16213e", "#8b0000"))
+        self.log_stop_btn.clicked.connect(self.on_log_stop)
+        self.log_stop_btn.setEnabled(False)
+        log_row.addWidget(self.log_stop_btn)
 
         self.current_log_label = QLabel("Log: —")
         self.current_log_label.setStyleSheet(
@@ -621,20 +681,17 @@ class MainWindow(QMainWindow):
         self.connect_btn.setEnabled(False)
         self.disconnect_btn.setEnabled(True)
         self.tare_btn.setEnabled(True)
-        self.log_btn.setEnabled(True)
         self.name_edit.setEnabled(True)
-        self.apply_name_btn.setEnabled(True)
         # 실제 로깅 상태는 LOG_ACTIVE/LOG_IDLE 응답 수신 시 _on_response에서 갱신
+        self._update_log_btns(False)
 
     def _on_disconnected(self):
         self.connect_btn.setEnabled(True)
         self.disconnect_btn.setEnabled(False)
         self.tare_btn.setEnabled(False)
-        self.log_btn.setEnabled(False)
         self.name_edit.setEnabled(False)
-        self.apply_name_btn.setEnabled(False)
         self._is_logging = False
-        self._set_log_btn_state(False)
+        self._update_log_btns(None)  # 모두 비활성화
         self.current_log_label.setText("Log: —")
         self.comparison.set_data(0.0, 0.0)
 
@@ -645,41 +702,42 @@ class MainWindow(QMainWindow):
         if msg.startswith("LOG_START:"):
             fname = msg[len("LOG_START:"):]
             self._is_logging = True
-            self._set_log_btn_state(True)
+            self._update_log_btns(True)
             self.current_log_label.setText(f"Log: {fname}  ●REC")
             self.status_label.setText(f"Logging → {fname}")
         elif msg.startswith("LOG_STOP:"):
             fname = msg[len("LOG_STOP:"):]
             self._is_logging = False
-            self._set_log_btn_state(False)
+            self._update_log_btns(False)
             self.current_log_label.setText(f"Log: {fname} (stopped)")
             self.status_label.setText(f"Log stopped: {fname}")
         elif msg.startswith("LOG_ACTIVE:"):
             fname = msg[len("LOG_ACTIVE:"):]
             self._is_logging = True
-            self._set_log_btn_state(True)
+            self._update_log_btns(True)
             self.current_log_label.setText(f"Log: {fname}  ●REC")
         elif msg == "LOG_IDLE":
             self._is_logging = False
-            self._set_log_btn_state(False)
+            self._update_log_btns(False)
             self.current_log_label.setText("Log: (idle)")
         elif msg.startswith("LOG_FAIL:"):
             reason = msg[len("LOG_FAIL:"):]
             self._is_logging = False
-            self._set_log_btn_state(False)
+            self._update_log_btns(False)
             self.current_log_label.setText(f"Log FAIL: {reason}")
             self.status_label.setText(f"Log failed: {reason}")
-        elif msg == "LOG_NAME_CLEARED":
-            self.current_log_label.setText("Log: (auto-increment)")
-        # STREAM_ON/OFF, TARE_OK 는 별도 시각 피드백 없이 무시 (status_label은 BLE 워커가 이미 설정)
 
-    def _set_log_btn_state(self, logging: bool):
-        if logging:
-            self.log_btn.setText("Log Stop")
-            self.log_btn.setStyleSheet(BTN_STYLE.replace("#16213e", "#8b0000"))
+    def _update_log_btns(self, logging):
+        """logging=True: 로깅 중, False: 대기, None: 연결 해제(모두 비활성)"""
+        if logging is None:
+            self.log_start_btn.setEnabled(False)
+            self.log_stop_btn.setEnabled(False)
+        elif logging:
+            self.log_start_btn.setEnabled(False)
+            self.log_stop_btn.setEnabled(True)
         else:
-            self.log_btn.setText("Log Start")
-            self.log_btn.setStyleSheet(BTN_STYLE)
+            self.log_start_btn.setEnabled(True)
+            self.log_stop_btn.setEnabled(False)
 
     # ── 버튼 핸들러 ──
 
@@ -693,25 +751,15 @@ class MainWindow(QMainWindow):
     def on_tare(self):
         self.ble_worker.send_command("tare")
 
-    def on_apply_name(self):
-        """파일명 입력창의 내용으로 로그 파일 전환
-           - 내용이 있으면 'logname:<name>' → 펌웨어가 stop→새 파일 start
-           - 비어있으면 'logname:' (빈 값) → auto-increment로 복귀
-        """
+    def on_log_start(self):
         name = self.name_edit.text().strip()
-        self.ble_worker.send_command(f"logname:{name}")
-
-    def on_log_toggle(self):
-        # 정지는 logstop, 시작은 파일명 필드가 채워져 있으면 logname:, 아니면 log
-        if self._is_logging:
-            self.ble_worker.send_command("logstop")
+        if name:
+            self.ble_worker.send_command(f"logname:{name}")
         else:
-            name = self.name_edit.text().strip()
-            if name:
-                self.ble_worker.send_command(f"logname:{name}")
-            else:
-                self.ble_worker.send_command("log")
-        # UI 상태는 LOG_START/LOG_STOP 응답 수신 시 갱신
+            self.ble_worker.send_command("log")
+
+    def on_log_stop(self):
+        self.ble_worker.send_command("logstop")
 
     def _update_hz(self):
         self.hz_label.setText(f"{self._pkt_count} Hz")

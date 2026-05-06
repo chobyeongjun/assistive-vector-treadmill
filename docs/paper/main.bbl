@@ -1,18 +1,9 @@
-\begin{thebibliography}{22}
+\begin{thebibliography}{20}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
-
-\bibitem[Sawicki et~al.(2020)Sawicki, Beck, Kang, and Young]{sawicki2020}
-Gregory~S. Sawicki, Owen~N. Beck, Inseung Kang, and Aaron~J. Young.
-\newblock The exoskeleton expansion: improving walking and running economy.
-\newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 17:\penalty0
-  25, 2020.
-\newblock \doi{10.1186/s12984-020-00663-9}.
-\newblock Review of 23 studies on exoskeleton walking/running economy
-  improvements 2013--2019.
 
 \bibitem[Apte et~al.(2018)Apte, Plooij, and Vallery]{apte2018}
 Salil Apte, Michiel Plooij, and Heike Vallery.
@@ -21,7 +12,13 @@ Salil Apte, Michiel Plooij, and Heike Vallery.
 \newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 15:\penalty0
   53, 2018.
 \newblock \doi{10.1186/s12984-018-0380-0}.
-\newblock Open access (BMC). Verified via CrossRef + PDF.
+
+\bibitem[Sawicki et~al.(2020)Sawicki, Beck, Kang, and Young]{sawicki2020}
+Gregory~S. Sawicki, Owen~N. Beck, Inseung Kang, and Aaron~J. Young.
+\newblock The exoskeleton expansion: improving walking and running economy.
+\newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 17:\penalty0
+  25, 2020.
+\newblock \doi{10.1186/s12984-020-00663-9}.
 
 \bibitem[Asbeck et~al.(2015)Asbeck, {De Rossi}, Holt, and Walsh]{asbeck2015}
 Alan~T. Asbeck, Stefano M.~M. {De Rossi}, Kenneth~G. Holt, and Conor~J. Walsh.
@@ -29,8 +26,6 @@ Alan~T. Asbeck, Stefano M.~M. {De Rossi}, Kenneth~G. Holt, and Conor~J. Walsh.
 \newblock \emph{The International Journal of Robotics Research}, 34\penalty0
   (6):\penalty0 744--762, 2015.
 \newblock \doi{10.1177/0278364914562476}.
-\newblock Multi-articular soft exosuit; peak cable forces up to 200 N; n=5;
-  loaded walking 6.4\% metabolic reduction.
 
 \bibitem[Ding et~al.(2016)Ding, Panizzolo, Siviy, Malcolm, Galiana, Holt, and
   Walsh]{ding2016}
@@ -41,9 +36,6 @@ Ye~Ding, Fausto~A. Panizzolo, Christopher Siviy, Philippe Malcolm, Ignacio
 \newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 13:\penalty0
   87, 2016.
 \newblock \doi{10.1186/s12984-016-0196-8}.
-\newblock Hip-extension assistance timing study; 4 timing profiles
-  (ESEP/ESLP/LSEP/LSLP); n=8 healthy. Verified via CrossRef. Note: previously
-  mis-attributed as "Lee 2017".
 
 \bibitem[Kim et~al.(2022{\natexlab{a}})Kim, Quinlivan, Deprey, {Arumukhom
   Revi}, Eckert-Erdheim, Murphy, Orzel, and Walsh]{kim2022}
@@ -53,8 +45,13 @@ Jinsoo Kim, Brendan~T. Quinlivan, Lou-Ana Deprey, Dheepak {Arumukhom Revi}, Asa
   through optimized hip flexion assistance from a soft exosuit.
 \newblock \emph{Scientific Reports}, 12:\penalty0 10381, 2022{\natexlab{a}}.
 \newblock \doi{10.1038/s41598-022-14784-9}.
-\newblock 89 N peak hip flexion ~24\% natural torque; 15.2\% metabolic
-  reduction. First author Jinsoo Kim (NOT Slade). Verified via CrossRef + PDF.
+
+\bibitem[Collins et~al.(2015)Collins, Wiggin, and Sawicki]{collins2015}
+Steven~H. Collins, M.~Bruce Wiggin, and Gregory~S. Sawicki.
+\newblock Reducing the energy cost of human walking using an unpowered
+  exoskeleton.
+\newblock \emph{Nature}, 522:\penalty0 212--215, 2015.
+\newblock \doi{10.1038/nature14288}.
 
 \bibitem[Galle et~al.(2017)Galle, Malcolm, Collins, and {De Clercq}]{galle2017}
 Samuel Galle, Philippe Malcolm, Steven~Hartley Collins, and Dirk {De Clercq}.
@@ -63,18 +60,16 @@ Samuel Galle, Philippe Malcolm, Steven~Hartley Collins, and Dirk {De Clercq}.
 \newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 14:\penalty0
   35, 2017.
 \newblock \doi{10.1186/s12984-017-0235-0}.
-\newblock n=10 healthy female; 10 conditions (4 timings x 3 powers); optimal at
-  42\% onset, 0.4 W/kg; 21\% metabolic reduction. Open access (BMC); PDF in
-  references/.
 
-\bibitem[Collins et~al.(2015)Collins, Wiggin, and Sawicki]{collins2015}
-Steven~H. Collins, M.~Bruce Wiggin, and Gregory~S. Sawicki.
-\newblock Reducing the energy cost of human walking using an unpowered
-  exoskeleton.
-\newblock \emph{Nature}, 522:\penalty0 212--215, 2015.
-\newblock \doi{10.1038/nature14288}.
-\newblock Unpowered ankle exoskeleton; 7.2\% metabolic reduction; passive
-  elastic clutch.
+\bibitem[Awad et~al.(2017)Awad, Bae, O'Donnell, {De Rossi}, Hendron, Sloot,
+  Kudzia, Allen, Holt, Ellis, and Walsh]{awad2017}
+Louis~N. Awad, Jaehyun Bae, Kathleen O'Donnell, Stefano M.~M. {De Rossi},
+  Kathryn Hendron, Lizeth~H. Sloot, Pawel Kudzia, Stephen Allen, Kenneth~G.
+  Holt, Terry~D. Ellis, and Conor~J. Walsh.
+\newblock A soft robotic exosuit improves walking in patients after stroke.
+\newblock \emph{Science Translational Medicine}, 9\penalty0 (400):\penalty0
+  eaai9084, 2017.
+\newblock \doi{10.1126/scitranslmed.aai9084}.
 
 \bibitem[Quinlivan et~al.(2017)Quinlivan, Lee, Malcolm, Rossi, Grimmer, Siviy,
   Karavas, Wagner, Asbeck, Galiana, and Walsh]{quinlivan2017}
@@ -85,8 +80,6 @@ Brendan~T. Quinlivan, Sangjun Lee, Philippe Malcolm, Denise~M. Rossi, Martin
   multiarticular soft exosuit.
 \newblock \emph{Science Robotics}, 2\penalty0 (2):\penalty0 eaah4416, 2017.
 \newblock \doi{10.1126/scirobotics.aah4416}.
-\newblock n=7; assistance magnitude vs metabolic cost characterization.
-  Paywalled (Sci Robotics); access via institutional proxy.
 
 \bibitem[Lee et~al.(2018)Lee, Kim, Baker, Long, Karavas, Menard, Galiana, and
   Walsh]{lee2018}
@@ -97,9 +90,6 @@ Sangjun Lee, Jinsoo Kim, Lauren Baker, Andrew Long, Nikos Karavas, Nicolas
 \newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 15:\penalty0
   66, 2018.
 \newblock \doi{10.1186/s12984-018-0410-y}.
-\newblock First author Sangjun Lee; not to be confused with Lee 2017 hip
-  extension paper (= Ding 2016). Multi-joint autonomous exosuit with metabolic
-  benefit. Verified via CrossRef.
 
 \bibitem[Bryan et~al.(2021)Bryan, Franks, Song, Voloshina, Reyes, O'Donovan,
   Gregorczyk, and Collins]{bryan2021}
@@ -111,20 +101,14 @@ Gwendolyn~M. Bryan, Patrick~W. Franks, Seungmoon Song, Alexandra~S. Voloshina,
 \newblock \emph{Journal of NeuroEngineering and Rehabilitation}, 18:\penalty0
   152, 2021.
 \newblock \doi{10.1186/s12984-021-00943-y}.
-\newblock n=10 healthy; multi-joint optimization across walking speeds.
-  Verified via CrossRef.
 
-\bibitem[Awad et~al.(2017)Awad, Bae, O'Donnell, {De Rossi}, Hendron, Sloot,
-  Kudzia, Allen, Holt, Ellis, and Walsh]{awad2017}
-Louis~N. Awad, Jaehyun Bae, Kathleen O'Donnell, Stefano M.~M. {De Rossi},
-  Kathryn Hendron, Lizeth~H. Sloot, Pawel Kudzia, Stephen Allen, Kenneth~G.
-  Holt, Terry~D. Ellis, and Conor~J. Walsh.
-\newblock A soft robotic exosuit improves walking in patients after stroke.
-\newblock \emph{Science Translational Medicine}, 9\penalty0 (400):\penalty0
-  eaai9084, 2017.
-\newblock \doi{10.1126/scitranslmed.aai9084}.
-\newblock n=8 stroke patients; ~12\% biological torque assistance; +5.3 deg
-  paretic-ankle dorsiflexion, +11\% paretic propulsion. Paywalled.
+\bibitem[Kim et~al.(2022{\natexlab{b}})Kim, Moon, Park, and Lee]{kimleelab2022}
+Junyoung Kim, Heewon Moon, Junho Park, and Giuk Lee.
+\newblock Characterizing force capability and stiffness of hip exosuits under
+  different anchor points.
+\newblock \emph{PLOS ONE}, 17\penalty0 (8):\penalty0 e0271764,
+  2022{\natexlab{b}}.
+\newblock \doi{10.1371/journal.pone.0271764}.
 
 \bibitem[Chen et~al.(2024)Chen, Yu, Benali, Lu, Kok, and Wang]{chen2024}
 Yasheng Chen, Weiwei Yu, Abderraouf Benali, Donglai Lu, Siong~Yuen Kok, and
@@ -134,20 +118,6 @@ Yasheng Chen, Weiwei Yu, Abderraouf Benali, Donglai Lu, Siong~Yuen Kok, and
   cable-driven exoskeleton.
 \newblock \emph{Frontiers in Aging Neuroscience}, 16:\penalty0 1327397, 2024.
 \newblock \doi{10.3389/fnagi.2024.1327397}.
-\newblock Personalized attachment point optimization framework. First author
-  Yasheng Chen (NOT Sun). Open access (Frontiers).
-
-\bibitem[Kim et~al.(2022{\natexlab{b}})Kim, Moon, Park, and Lee]{kimleelab2022}
-Junyoung Kim, Heewon Moon, Junho Park, and Giuk Lee.
-\newblock Characterizing force capability and stiffness of hip exosuits under
-  different anchor points.
-\newblock \emph{PLOS ONE}, 17\penalty0 (8):\penalty0 e0271764,
-  2022{\natexlab{b}}.
-\newblock \doi{10.1371/journal.pone.0271764}.
-\newblock Lee Gi-uk lab (Chung-Ang University) prior work on hip exosuit anchor
-  point characterization; n=8 male; established lab equipment standards (Maxon
-  RE 50, EPOS4, RESPONSE FCP-04DB cable, Jagwire BHL100 housing, Futek LSB205
-  loadcell, MATLAB R2021b). Direct precursor to the present shank-level study.
 
 \bibitem[Faul et~al.(2007)Faul, Erdfelder, Lang, and Buchner]{faul2007}
 Franz Faul, Edgar Erdfelder, Albert-Georg Lang, and Axel Buchner.
@@ -156,30 +126,15 @@ Franz Faul, Edgar Erdfelder, Albert-Georg Lang, and Axel Buchner.
 \newblock \emph{Behavior Research Methods}, 39\penalty0 (2):\penalty0 175--191,
   2007.
 \newblock \doi{10.3758/BF03193146}.
-\newblock Standard software citation for G*Power power analysis.
-
-\bibitem[Kim et~al.(2024)Kim, Park, Yang, Nasirzadeh, and
-  Lee]{kimleelab2024emg}
-Yoosun Kim, Sejun Park, Seungtae Yang, Alireza Nasirzadeh, and Giuk Lee.
-\newblock The interplay between muscular activity and pattern recognition of
-  electro-stimulated haptic cues during normal walking: a pilot study.
-\newblock \emph{Bioengineering}, 11\penalty0 (12):\penalty0 1248, 2024.
-\newblock \doi{10.3390/bioengineering11121248}.
-\newblock Lee Gi-uk lab (Chung-Ang University); establishes lab convention for
-  surface EMG acquisition with Delsys Trigno Wireless System (4000 Hz, 50--450
-  Hz Butterworth BPF, 10 Hz LPF after rectification, MVC normalization).
-  Co-author Alireza Nasirzadeh is also a co-author of the present study.
 
 \bibitem[Hermens et~al.(2000)Hermens, Freriks, Disselhorst-Klug, and
   Rau]{hermens2000}
 Hermie~J. Hermens, Bart Freriks, Catherine Disselhorst-Klug, and G\"unter Rau.
-\newblock Development of recommendations for semg sensors and sensor placement
-  procedures.
+\newblock Development of recommendations for {SEMG} sensors and sensor
+  placement procedures.
 \newblock \emph{Journal of Electromyography and Kinesiology}, 10\penalty0
   (5):\penalty0 361--374, 2000.
 \newblock \doi{10.1016/S1050-6411(00)00027-4}.
-\newblock SENIAM recommendations -- gold standard for surface EMG electrode
-  placement.
 
 \bibitem[Goldberg and Stanhope(2013)]{goldberg2013}
 Saryn~R. Goldberg and Steven~J. Stanhope.
@@ -188,25 +143,6 @@ Saryn~R. Goldberg and Steven~J. Stanhope.
 \newblock \emph{Journal of Biomechanics}, 46\penalty0 (7):\penalty0 1176--1183,
   2013.
 \newblock \doi{10.1016/j.jbiomech.2013.01.001}.
-\newblock Joint moment sensitivity to BWS at 0/20/40/60\%; linear except knee
-  extension (quadratic). Verified via CrossRef.
-
-\bibitem[Perry and Burnfield(2010)]{perryburnfield2010}
-Jacquelin Perry and Judith~M. Burnfield.
-\newblock \emph{Gait Analysis: Normal and Pathological Function}.
-\newblock SLACK Incorporated, Thorofare, NJ, 2nd edition, 2010.
-\newblock ISBN 978-1556427664.
-\newblock Standard reference for gait phase definitions, including toe-off at
-  ~60\% gait cycle.
-
-\bibitem[Krebs et~al.(1998)Krebs, Robbins, Lavine, and Mann]{krebs1998}
-David~E. Krebs, Claire~E. Robbins, Leroy Lavine, and Robert~W. Mann.
-\newblock Hip biomechanics during gait.
-\newblock \emph{Journal of Orthopaedic and Sports Physical Therapy},
-  28\penalty0 (1):\penalty0 51--59, 1998.
-\newblock \doi{10.2519/jospt.1998.28.1.51}.
-\newblock Reference for hip joint biomechanics during gait. Verified via
-  CrossRef (note: third author corrected from "Loretta" to "Leroy").
 
 \bibitem[Yandell et~al.(2020)Yandell, Ziemnicki, McDonald, and
   Zelik]{yandell2020}
@@ -215,16 +151,16 @@ Matthew~B. Yandell, David~M. Ziemnicki, Kirsty~A. McDonald, and Karl~E. Zelik.
   thigh and shank to inform exosuit design.
 \newblock \emph{PLOS ONE}, 15\penalty0 (2):\penalty0 e0228536, 2020.
 \newblock \doi{10.1371/journal.pone.0228536}.
-\newblock n=10; shank comfort limit 702 +/- 220 N axial pulling. Open access;
-  verified via PDF.
+
+\bibitem[Perry and Burnfield(2010)]{perryburnfield2010}
+Jacquelin Perry and Judith~M. Burnfield.
+\newblock \emph{Gait Analysis: Normal and Pathological Function}.
+\newblock SLACK Incorporated, Thorofare, NJ, 2nd edition, 2010.
 
 \bibitem[Winter(2009)]{winter2009}
 David~A. Winter.
 \newblock \emph{Biomechanics and Motor Control of Human Movement}.
 \newblock John Wiley \& Sons, Hoboken, NJ, 4th edition, 2009.
-\newblock ISBN 978-0470398180.
-\newblock Standard reference for normative gait kinematics, kinetics, and
-  segment parameters.
 
 \bibitem[Meyer et~al.(2019)Meyer, Killeen, Easthope, Curt, Bolliger, Linnebank,
   Z\"orner, and Filli]{meyer2019}
@@ -233,8 +169,5 @@ Christian Meyer, Tim Killeen, Christopher~S. Easthope, Armin Curt, Marc
 \newblock Familiarization with treadmill walking: how much is enough?
 \newblock \emph{Scientific Reports}, 9:\penalty0 5273, 2019.
 \newblock \doi{10.1038/s41598-019-41721-0}.
-\newblock 6 minutes (~300--400 strides) sufficient for stabilization in healthy
-  adults. First author Christian Meyer (NOT Van Hooren). Open access; PDF in
-  references/.
 
 \end{thebibliography}

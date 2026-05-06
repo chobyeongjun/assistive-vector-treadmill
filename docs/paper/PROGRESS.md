@@ -11,15 +11,30 @@
 **Title:**
 > Biomechanical effects of shank-level cable attachment position and pulling direction during walker-supported gait: A preliminary characterization
 
-**Authors (확정):**
+**Authors (확정 v2):**
 1. Kyeongmin Lim (임경민) — co-first author $\dagger$
 2. Byeongjun Cho (조병준) — co-first author $\dagger$
 3. Alireza Nasirzadeh
-4. Gi-uk Lee (이기욱) — corresponding author *
+4. Ki-ho Lee (이기호)
+5. Gi-uk Lee (이기욱) — co-corresponding author * [Chung-Ang]
+6. Jinsoo Kim (김진수) — co-corresponding author * [SNU ECE]
 
-**Affiliation:** Department of Mechanical Engineering, Chung-Ang University, Seoul, Republic of Korea
+**Affiliations:**
+- [1] Department of Mechanical Engineering, **Chung-Ang University**, Seoul, Republic of Korea (1-5저자)
+- [2] Department of Electrical and Computer Engineering, **Seoul National University**, Seoul, Republic of Korea (Prof. Kim)
 
-**Lab:** Assistive and Rehabilitation Robot Laboratory (Prof. Lee Gi-uk)
+**Corresponding emails:**
+- giuklee@cau.ac.kr (Gi-uk Lee)
+- jinskim@snu.ac.kr (Jinsoo Kim)
+
+**Lab:**
+- Lee Gi-uk: Assistive and Rehabilitation Robot Laboratory (Chung-Ang)
+- Kim Jinsoo: Wearable Robotics Laboratory (SNU)
+
+**🔗 중요한 lineage 발견:**
+- Prof. Kim Jinsoo는 본 paper의 핵심 reference인 **Kim et al. 2022 Sci Reports** (low-assist hip exosuit, 24% natural torque optimal)의 **1저자**
+- Harvard PhD (Walsh biodesign lab, 2015-2022) → Stanford postdoc → SNU faculty (2024+)
+- 우리가 cite하는 force magnitude justification paper 본인이 쓴 것 → 본인이 co-corresponding으로 들어옴 → methodological lineage 명확
 
 **Framing:** Preliminary characterization for future walker-mounted, cable-driven robotic gait-assistive device.
 
@@ -89,22 +104,25 @@
 | Force plate | Bertec (treadmill-integrated) | 모델 확정 필요 |
 | Sync | Vicon Lock+ analog trigger | 확정 필요 |
 
-### **확정** ✓ (Lee lab 논문 2개 정독으로 모두 확정)
-| Equipment | 상세 | 출처 |
+### **확정** ✓ (장비 + sampling rate)
+| Equipment | 상세 | Sampling rate |
 |---|---|---|
-| **Foot IMU** | **EBIMU24GV6** (E2BOX, Republic of Korea), 100 Hz logging | user |
-| **Cable motor** | **AK60-6** (CubeMars / T-Motor, China) BLDC, 70 N safety cutoff | user |
-| **Cable load cell** | **LSB205** (Futek Advanced Sensor Technology, Irvine, CA, USA) | Park 2026 + Kim 2022 lab papers |
-| **Treadmill** | **TM-09-P** (Bertec, Columbus, OH, USA) instrumented split-belt | Park 2026 lab paper |
-| **Motion capture** | **Qualisys** (Göteborg, Sweden) — camera model TBD | user |
-| **Motion analysis software** | **Visual 3D** (HAS-Motion) 또는 **AnyBody** Modeling System | user |
-| **EMG system** | **Trigno Wireless System** (Delsys Inc., Natick, MA, USA), 4000 Hz | Kim 2024 lab paper |
-| **EMG sync trigger** | **Trigger Module** (Delsys Inc., Natick, MA, USA) | Kim 2024 lab paper |
-| **EMG processing** | 4th-order BPF 50-450 Hz + LPF 10 Hz (zero-phase) + MVC norm | Kim 2024 lab convention |
-| **Statistics software** | **MATLAB R2025b** (MathWorks, Natick, MA, USA) | user |
-| **Walker frame** | Custom rigid walker with bilateral handrail load cells | (own design) |
-| **WBS load cells** | model TBD; bilateral handrail-mounted | (own design) |
-| **Lee Gi-uk email** | **giuklee@cau.ac.kr** | Park 2026 + Kim 2024 papers |
+| **Treadmill (force plate)** | **TM-09-P** (Bertec, Columbus, OH, USA) | **2000 Hz** |
+| **Motion capture** | **Qualisys** (Göteborg, Sweden) — camera model TBD | **200 Hz** |
+| **Motion analysis software** | **Visual 3D** (HAS-Motion) 또는 **AnyBody** | (offline) |
+| **EMG system** | **Trigno Wireless System** (Delsys, Natick, MA, USA) | as configured (verified at acquisition) |
+| **EMG sync trigger** | **Trigger Module** (Delsys, Natick, MA, USA) | – |
+| **Foot IMU** | **EBIMU24GV6** (E2BOX, Republic of Korea) | 100 Hz logging (1000 Hz internal) |
+| **Cable motor** | **AK60-6** (CubeMars / T-Motor, China), 70 N cutoff | – |
+| **Cable load cell** | **LSB205** (Futek Advanced Sensor Technology, Irvine, CA, USA) | as configured |
+| **WBS handrail load cells** | model TBD; bilateral | 1000 Hz (placeholder) |
+| **Statistics software** | **MATLAB R2025b** (MathWorks, Natick, MA, USA) | – |
+| **Lee Gi-uk email** | **giuklee@cau.ac.kr** | – |
+
+### Sampling rate 처리 정책 (paper에 반영)
+- 각 stream native rate 그대로 raw 기록
+- offline에서 linear/polynomial interpolation으로 공통 time-base 정렬
+- EMG processing: BPF cutoff은 **acquisition 시 verified rate에 맞춰 조정** (lower 20-50 Hz, upper Nyquist 직하)
 
 ### Lee lab의 다른 IMU (참고)
 - 다른 paper에서는 **Xsens MTi-630 AHRS** 사용 (Park 2026, Kim 2024 모두)

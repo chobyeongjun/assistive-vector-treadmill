@@ -54,11 +54,10 @@
 // [2] 데이터 전송 설정
 // ================================================================
 
-#define WALKER_DATA_COUNT 11   // 전송할 데이터 개수 (IMU + Force + Mark)
+#define WALKER_DATA_COUNT 9    // 전송할 데이터 개수 (GCP×2, Pitch×2, Force×4, Mark)
+                               // GyroY 제거 → 패킷 ~50B, 50Hz × 50B = 2,500 B/s < UART 11,520 B/s
 #define BLE_SEND_PERIOD_MS 40  // 전송 주기 (40ms = 25Hz)
-                               // IMU 움직임 시 gyro 값 증가 → 패킷 80-90B
-                               // 패킷 ~90bytes × 50Hz = 4,500 B/s → Nano BLE TX 버퍼 포화
-                               // 패킷 ~90bytes × 25Hz = 2,250 B/s → 안정 마진 확보
+                               // 9필드 × ~50B × 25Hz = 1,250 B/s (UART 11,520 B/s의 11%)
 
 // ================================================================
 // [3] 전역 변수 선언 (extern)
@@ -77,6 +76,11 @@ extern uint8_t bleRxLen;
 
 // BLE 마지막 수신 시각 (millis) — 디버그/확장용
 extern uint32_t bleLastRxMs;
+
+// BLE UART 진단 카운터
+extern volatile uint32_t bleTxSentCount;
+extern volatile uint32_t bleTxSkipCount;
+extern volatile uint32_t bleRxCommandCount;
 
 // ================================================================
 // [4] 함수 선언
@@ -117,7 +121,6 @@ void setupBleComm();
 void sendWalkerDataToBLE(
     float l_gcp, float r_gcp,
     float l_pitch, float r_pitch,
-    float l_gyro_y, float r_gyro_y,
     float l_des_force, float r_des_force,
     float l_act_force, float r_act_force,
     uint32_t mark

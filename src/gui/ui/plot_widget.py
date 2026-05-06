@@ -489,7 +489,6 @@ class PlotTabWidget(QWidget):
     def _init_buffers(self) -> dict:
         keys = [
             'time', 'l_gcp', 'r_gcp', 'l_pitch', 'r_pitch',
-            'l_gyro', 'r_gyro',
             'l_des_force', 'r_des_force', 'l_act_force', 'r_act_force'
         ]
         return {k: deque(maxlen=self.BUFFER_SIZE) for k in keys}
@@ -529,11 +528,6 @@ class PlotTabWidget(QWidget):
         self.imu_plot.add_curve("R Pitch", SinglePlot.COLOR_RIGHT)
         self.tab_widget.addTab(self.imu_plot, "IMU Pitch")
 
-        self.gyro_plot = SinglePlot("IMU Gyro Y (deg/s)", (-200, 200))
-        self.gyro_plot.add_curve("L Gyro", SinglePlot.COLOR_LEFT)
-        self.gyro_plot.add_curve("R Gyro", SinglePlot.COLOR_RIGHT)
-        self.tab_widget.addTab(self.gyro_plot, "Gyro")
-
 
     def set_mode(self, mode: int):
         if mode != self._mode:
@@ -553,21 +547,16 @@ class PlotTabWidget(QWidget):
         b['r_gcp'].append(data.r_gcp * 100)
         b['l_pitch'].append(data.l_pitch)
         b['r_pitch'].append(data.r_pitch)
-        b['l_gyro'].append(data.l_gyro_y)
-        b['r_gyro'].append(data.r_gyro_y)
         b['l_des_force'].append(data.l_des_force)
         b['r_des_force'].append(data.r_des_force)
         b['l_act_force'].append(data.l_act_force)
         b['r_act_force'].append(data.r_act_force)
 
     def _to_array(self, d: deque) -> np.ndarray:
-        """deque → numpy (캐시 재사용)"""
         n = len(d)
         if n == 0:
             return np.array([], dtype=np.float32)
-        # 직접 복사 (list() 중간 단계 없음)
-        arr = np.fromiter(d, dtype=np.float32, count=n)
-        return arr
+        return np.fromiter(d, dtype=np.float32, count=n)
 
     def update_plots(self):
         """현재 탭만 업데이트 — 탭 인덱스 기반, 고정 X range로 autoRange 재계산 제거."""
@@ -583,30 +572,25 @@ class PlotTabWidget(QWidget):
         time_arr = self._to_array(b['time'])
         x_end = int(time_arr[-1]) if len(time_arr) > 0 else None
 
+        a = self._to_array
         if current == 0:  # Force
             if self._mode == 0:
                 self.force_plot.batch_update([
-                    ("L Desired", time_arr, self._to_array(b['l_des_force'])),
-                    ("L Actual",  time_arr, self._to_array(b['l_act_force'])),
-                    ("R Desired", time_arr, self._to_array(b['r_des_force'])),
-                    ("R Actual",  time_arr, self._to_array(b['r_act_force'])),
+                    ("L Desired", time_arr, a(b['l_des_force'])),
+                    ("L Actual",  time_arr, a(b['l_act_force'])),
+                    ("R Desired", time_arr, a(b['r_des_force'])),
+                    ("R Actual",  time_arr, a(b['r_act_force'])),
                 ], x_end=x_end)
             else:
                 self.force_plot.batch_update([
-                    ("L Force", time_arr, self._to_array(b['l_act_force'])),
-                    ("R Force", time_arr, self._to_array(b['r_act_force'])),
+                    ("L Force", time_arr, a(b['l_act_force'])),
+                    ("R Force", time_arr, a(b['r_act_force'])),
                 ], x_end=x_end)
 
         elif current == 1:  # IMU Pitch
             self.imu_plot.batch_update([
-                ("L Pitch", time_arr, self._to_array(b['l_pitch'])),
-                ("R Pitch", time_arr, self._to_array(b['r_pitch'])),
-            ], x_end=x_end)
-
-        elif current == 2:  # Gyro
-            self.gyro_plot.batch_update([
-                ("L Gyro", time_arr, self._to_array(b['l_gyro'])),
-                ("R Gyro", time_arr, self._to_array(b['r_gyro'])),
+                ("L Pitch", time_arr, a(b['l_pitch'])),
+                ("R Pitch", time_arr, a(b['r_pitch'])),
             ], x_end=x_end)
 
     def set_gcp_callback(self, callback):
@@ -618,7 +602,7 @@ class PlotTabWidget(QWidget):
         self._sample_count = 0
 
         empty = np.array([], dtype=np.float32)
-        for plot in [self.force_plot, self.imu_plot, self.gyro_plot]:
+        for plot in [self.force_plot, self.imu_plot]:
             if hasattr(plot, '_curves'):
                 for curve in plot._curves.values():
                     curve.setData(empty, empty)

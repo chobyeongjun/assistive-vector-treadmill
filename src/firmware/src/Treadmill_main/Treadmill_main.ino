@@ -190,11 +190,12 @@ volatile ControlMode currentMode = MODE_FORCE_ASSIST;
 // ================================================================
 
 // ★ Onset-Peak-Release 3점 프로파일 (HS 기준)
-volatile float GCP_FORCE_ONSET = 0.60f;    // 힘 시작점 (HS 기준 55%)
-volatile float GCP_FORCE_PEAK = 0.75f;     // 최대 힘 지점 (75%)
+volatile float GCP_FORCE_ONSET = 0.55f;    // 힘 시작점 (HS 기준 55%)
+volatile float GCP_FORCE_PEAK = 0.70f;     // 최대 힘 지점 (70%)
 volatile float GCP_FORCE_RELEASE = 0.85f;  // 힘 종료점 (85%)
 volatile float PEAK_FORCE_N = 50.0f;       // 최대 보조력 [N]
-volatile float MIN_TENSION_N = 5.0f;        // ★ 최소 케이블 장력 [N] - 항상 유지
+volatile float MIN_TENSION_N = 5.0f;        // ★ 최소 케이블 장력 [N] - 초기 one-shot pretension
+volatile float WARMUP_TENSION_N = 5.0f;     // ★ Warmup 스텝 pretension [N] (fw 명령어로 조정)
 
 // ★ Slack Zone Deadband - 삭제됨 (Pretension 5N이 항상 유지되므로 불필요)
 
@@ -209,24 +210,49 @@ volatile float MAX_ADM_ACCEL_ASSIST = 30.00f;  // 가속도 제한 [m/s²]
 // τ = M/C = 1.0/5.0 = 200ms (하강 구간 ~250ms 내 추종 가능)
 volatile float adm_M_falling = 1.0f;           // 더 낮은 질량 → 빠른 응답
 volatile float adm_C_falling = 4.0f;           // 적절한 감쇠
-volatile float MAX_ADM_VEL_FALLING = 2.1f;     // 더 빠른 풀림 속도 [m/s]
+volatile float MAX_ADM_VEL_FALLING = 1.8f;     // 더 빠른 풀림 속도 [m/s]
 volatile float MAX_ADM_ACCEL_FALLING = 50.0f;  // 가속도 제한 [m/s²]
 
 // Slack Zone (Pretension 구간): 5N 유지하며 부드럽게 다리 따라가기
 volatile float adm_M_slack = 1.0f;           // 가상 질량 [kg]
 volatile float adm_C_slack = 4.0f;           // 가상 감쇠 [N*s/m] - 높을수록 부드러움
-volatile float MAX_ADM_VEL_SLACK = 2.1f;     // 속도 제한 [m/s]
+volatile float MAX_ADM_VEL_SLACK = 1.8f;     // 속도 제한 [m/s]
 volatile float MAX_ADM_ACCEL_SLACK = 50.0f;  // 가속도 제한 [m/s²] - 급격한 변화 방지
 
 // ★★ Treadmill 보상: HS→(ONSET - TFF_END_OFFSET) full sine
 // - treadmill belt 속도 [m/s] (예: 1.25 = 1.25m/s)
 // - TFF_GAIN: BLE 'tg' 커맨드로 수동 조절 (고정값)
 // - BLE 커맨드: 'tm' 벨트 속도, 'tg' TFF 게인, 'te' TFF 종료 오프셋
-volatile float treadmill_speed_mps = 1.25f;  // [m/s] Treadmill belt speed (0 = off)
-volatile float TFF_GAIN = 0.8f;              // [0~1] 케이블 각도 보정 게인 (cos(θ) ≈ 0.5~0.8)
+
+// TFF_GAIN 이론값: LR × cos(α)
+// LR = (L_thigh + d_attach) / (L_thigh + L_shank)  [hip-pivot 모델]
+// 출처: De Leva (1996) J. Biomechanics — 성인 남성, H=170cm
+//   L_thigh = 23.2% H = 0.394m
+//   L_shank = 24.7% H = 0.420m  →  L_total = 0.814m
+//   d_attach (knee에서 아래로):
+//     HIGH = 25% L_shank = 0.105m → LR = (0.394+0.105)/0.814 = 0.613
+//     MID  = 50% L_shank = 0.210m → LR = (0.394+0.210)/0.814 = 0.742
+//     LOW  = 75% L_shank = 0.315m → LR = (0.394+0.315)/0.814 = 0.871
+//   α=30°: cos=0.866  │  α=0°: cos=1.000
+// ┌─────────┬───────┬────────┐
+// │ Level   │ α=30° │  α=0°  │
+// ├─────────┼───────┼────────┤
+// │ HIGH    │ 0.531 │ 0.613  │
+// │ MID     │ 0.643 │ 0.742  │
+// │ LOW     │ 0.754 │ 0.871  │
+// └─────────┴───────┴────────┘
+#define TFF_GAIN_HIGH_30  0.531f
+#define TFF_GAIN_HIGH_0   0.613f
+#define TFF_GAIN_MID_30   0.643f
+#define TFF_GAIN_MID_0    0.742f
+#define TFF_GAIN_LOW_30   0.754f
+#define TFF_GAIN_LOW_0    0.871f
+
+volatile float treadmill_speed_mps = 1.00f;  // [m/s] Treadmill belt speed (0 = off)
+volatile float TFF_GAIN = TFF_GAIN_HIGH_30;  // 기본값: HIGH 레벨, α=30° (실험 조건에 맞게 선택)
 volatile float TFF_END_OFFSET = 0.00f;       // [GCP %] ONSET 기준 몇 % 전에서 TFF 종료 (BLE: 'te') → 0=ONSET까지 풀기
-volatile float ZONE3_MAX_WIND_CURRENT_A = 1.0f;   // Zone 3 감기는 방향 전류 제한 [A] (Serial: 'z3c')
-volatile float ZONE3_MAX_VEL_MPS       = 0.5f;   // Zone 3 zero-force admittance 속도 제한 [m/s] (Serial: 'z3v')
+volatile float ZONE3_MAX_WIND_CURRENT_A = 0.5f;   // Zone 3 감기는 방향 전류 제한 [A] (Serial: 'z3c')
+volatile float ZONE3_MAX_VEL_MPS       = 0.1f;   // Zone 3 zero-force admittance 속도 제한 [m/s] (Serial: 'z3v')
 
 // ★★ TFF_GAIN: BLE에서 수동 조절하는 고정값 (Adaptive 제거됨)
 
@@ -1197,7 +1223,7 @@ volatile float prev_gcp[SIDE_COUNT] = { 0.0f, 0.0f };
 // Profile 진입 에지 감지 (velocity/PID 리셋용)
 volatile bool wasInProfile[SIDE_COUNT] = { false, false };
 volatile float zone4EntryPos_deg[SIDE_COUNT] = { 0, 0 };
-volatile float ZONE4_PAYOUT_DEG = 200.0f;  // Zone 4 목표 payout 각도 [deg]
+volatile float ZONE4_PAYOUT_DEG = 150.0f;  // Zone 4 목표 payout 각도 [deg]
 volatile float ZONE4_RAMP_MS    = 40.0f;   // 감속 ramp 시간 [ms] → decel_deg 결정 (=v_max×T/2)
 
 // ================================================================
@@ -1693,6 +1719,9 @@ void processLogBuffer() {
   if (!isLogging && dataFile && (logTail == logHead)) {
     dataFile.flush();
     dataFile.close();
+    char resp[48];
+    snprintf(resp, sizeof(resp), "LOG_STOP:%s", filename);
+    sendBleResponse(resp);
     Serial.print("💾 Logging STOPPED: ");
     Serial.println(filename);
   }
@@ -1927,15 +1956,15 @@ void updateIMUStream() {
  *  ★★ INTER 제거: ONSET→PEAK 하나의 sin(π/2×t) 곡선
  *  피크에서 기울기 = 0 → Rising/Falling 매끄럽게 연결
  */
-inline float computeForceProfile_4Point(float gcp, float peakF) {
+inline float computeForceProfile_4Point(float gcp, float peakF, float onset) {
   // Phase 0: [0%, ONSET) - Zone 3에서 처리
-  if (gcp < GCP_FORCE_ONSET) {
+  if (gcp < onset) {
     return 0.0f;
   }
 
   // Phase 1: [ONSET, PEAK] - Rising Half-Sine (0N → peakF)
   if (gcp <= GCP_FORCE_PEAK) {
-    float t = (gcp - GCP_FORCE_ONSET) / (GCP_FORCE_PEAK - GCP_FORCE_ONSET);
+    float t = (gcp - onset) / (GCP_FORCE_PEAK - onset);
     t = clampf(t, 0.0f, 1.0f);
     float ratio = sinf(1.5707963f * t);   // 0 → 1
     return peakF * ratio;                  // 0N → 50N
@@ -2147,9 +2176,17 @@ inline void controllerStep(Side s, float dt) {
     actualForce_N[s] = F_meas;
 
     // ───────────────────────────────────────────────────────────────
-    // 구간 판별
+    // ONSET: HS 기준 고정값 (GCP_FORCE_ONSET, BLE로 조정 가능)
     // ───────────────────────────────────────────────────────────────
-    bool gcpInProfileZone = (gcp >= GCP_FORCE_ONSET && gcp <= GCP_FORCE_RELEASE);
+    float effective_onset = GCP_FORCE_ONSET;
+
+    // ───────────────────────────────────────────────────────────────
+    // 구간 판별
+    // assist 진입 후에는 onset 조건 제거 — PEAK/RELEASE만 판단
+    // ───────────────────────────────────────────────────────────────
+    bool gcpInProfileZone = wasInProfile[s]
+        ? (gcp <= GCP_FORCE_RELEASE)                              // 이미 진입: RELEASE까지 유지
+        : (gcp >= effective_onset && gcp <= GCP_FORCE_RELEASE);   // 미진입: onset 진입 조건
 
     bool otherSideActive = (activeAssistSide != SIDE_COUNT && activeAssistSide != s);
 
@@ -2165,7 +2202,7 @@ inline void controllerStep(Side s, float dt) {
       isrMsgPush(ISR_MSG_ASSIST_END, (uint8_t)s);
     }
 
-    // ★★ 스텝 카운터 감소
+    // ★★ 스텝 카운터 감소 (GCP RELEASE 이후 한 번)
     if (skipStepCount[s] > 0 && gcp > GCP_FORCE_RELEASE && gcp < 1.0f) {
       skipStepCount[s]--;
       isrMsgPush(ISR_MSG_STEP_SKIP, (uint8_t)s, 0.0f, skipStepCount[s]);
@@ -2175,15 +2212,29 @@ inline void controllerStep(Side s, float dt) {
     float M, C, max_vel, max_accel;
     bool skipAdmittance = false;
     bool inZone3 = false;  // Zone 3: 감기는 방향 전류 제한 적용
+    // Warmup 중(skipStep > 0)에 GCP 활성이면 pretension으로 처리
+    bool inWarmupPretension = (skipStepCount[s] > 0 && gcpActiveOf(s));
 
+    // ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
+    // ZONE W: Warmup (skipStep > 0, GCP 활성) — Pretension 유지
+    // Force profile 대신 WARMUP_TENSION_N으로 케이블 팽팽하게 유지
+    // ═══════════════════════════════════════════════════════════════
+    if (inWarmupPretension) {
+      F_cmd = WARMUP_TENSION_N;
+      M = adm_M_slack;
+      C = adm_C_slack;
+      max_vel = MAX_ADM_VEL_SLACK;
+      max_accel = MAX_ADM_ACCEL_SLACK;
+    }
     // ═══════════════════════════════════════════════════════════════
     // ZONE 1: Assist Zone (ONSET ~ RELEASE) - Force Profile
     // ★ 2단계 Admittance 계수:
     //   ONSET → PEAK  : Assist 계수 (상승 추종)
     //   PEAK  → RELEASE: Falling 계수 (빠른 하강 추종)
     // ═══════════════════════════════════════════════════════════════
-    if (inProfileZone) {
-      F_cmd = computeForceProfile_4Point(gcp, PEAK_FORCE_N);
+    else if (inProfileZone) {
+      F_cmd = computeForceProfile_4Point(gcp, PEAK_FORCE_N, effective_onset);
 
       if (isInFallingZone(gcp)) {
         // ── PEAK → RELEASE: Falling (빠른 payout) ──
@@ -2235,7 +2286,7 @@ inline void controllerStep(Side s, float dt) {
     // ═══════════════════════════════════════════════════════════════
     // ZONE 3: Pre-Onset (HS 0% ~ ONSET) — TFF only, no force control
     // ═══════════════════════════════════════════════════════════════
-    else if (gcp < GCP_FORCE_ONSET) {
+    else if (gcp < effective_onset) {
       if (pretensionDone[s]) {
         pretensionDone[s] = false;
         pretensionStartTime_ms[s] = millis();
@@ -2373,9 +2424,9 @@ inline void controllerStep(Side s, float dt) {
       //  > tff_end:    0
       //  peak at gcp = tff_end/2 (25%), 양 끝에서 매끄럽게 0
       //
-      const float tff_end = GCP_FORCE_ONSET - TFF_END_OFFSET;  // ONSET에서 TFF_END_OFFSET% 전
+      const float tff_end = effective_onset - TFF_END_OFFSET;  // ONSET에서 TFF_END_OFFSET% 전
       float v_treadmill_ff = 0.0f;
-      if (gcpActiveOf(s) && skipStepCount[s] <= 0) {
+      if (gcpActiveOf(s) && skipStepCount[s] <= 0 && tff_end > 0.01f) {  // div-by-zero 가드
         if (gcp <= tff_end) {
           float t = gcp / tff_end;  // 0→1 (HS→tff_end)
           v_treadmill_ff = -1.0f * treadmill_speed_mps * TFF_GAIN * sinf(3.1415927f * t);
@@ -2389,6 +2440,7 @@ inline void controllerStep(Side s, float dt) {
         float dv_dt = (F_err - C * adm_velocity_mps[s]) / M;
         dv_dt = clampf(dv_dt, -max_accel, max_accel);
         adm_velocity_mps[s] += dv_dt * dt;
+        adm_velocity_mps[s] = clampf(adm_velocity_mps[s], -max_vel, max_vel);
       }
 
       float v_total = adm_velocity_mps[s] + v_motion_ff + v_treadmill_ff;
@@ -2405,7 +2457,7 @@ inline void controllerStep(Side s, float dt) {
       float prev_v = desiredVelocity_mps[s];
       v_total = clampf(v_total, prev_v - max_dv, prev_v + max_dv);
 
-      v_total = clampf(v_total, -max_vel, max_vel);
+      v_total = clampf(v_total, -MAX_ADM_VELOCITY_MPS, MAX_ADM_VELOCITY_MPS);
 
       adm_position_m[s] += v_total * dt;
       desiredVelocity_mps[s] = v_total;
@@ -2891,34 +2943,42 @@ void printGains() {
 // ================================================================
 // [Q-2.9] 실험 프리셋 (Experiment Presets)
 // preset1=High-30°, preset2=High-0°, preset3=Mid-30°,
-// preset4=Mid-0°, preset5=Low-30°, preset6=Low-0°
-// 공통값: onset=0.60, peak=0.72, release=0.85, PF=50N,
-//         ActFF=0.15, TFF=0.55, MotFF=0.50, belt=1.0m/s, Z4=150deg
+// preset4=Mid-0°, preset5=Low-30°, preset6=Low-0°, preset7=Low-45°
+// 공통값: onset=0.55, peak=0.70, release=0.85, PF=50N,
+//         ActFF=0.15, belt=1.0m/s, Z4=150deg
 // ================================================================
 
 void applyPreset(int n) {
   static const char* names[] = {
-    "", "High-30deg", "High-0deg", "Mid-30deg", "Mid-0deg", "Low-30deg", "Low-0deg"
+    "", "High-30deg", "High-0deg", "Mid-30deg", "Mid-0deg",
+    "Low-30deg", "Low-0deg", "Low-45deg"
   };
-  if (n < 1 || n > 6) {
-    Serial.println("Preset: 1~6 (High30/High0/Mid30/Mid0/Low30/Low0)");
+  // 실험 조건별 FF 값 (empirical)
+  // 이론값은 TFF_GAIN_HIGH_30 등 define 참조
+  static const float tff_gains[]    = { 0.0f, 0.55f, 0.60f, 0.60f, 0.60f, 0.50f, 0.50f, 0.45f };
+  static const float motion_ffs[]   = { 0.0f, 0.35f, 0.35f, 0.35f, 0.35f, 0.30f, 0.40f, 0.40f };
+  // belt speed: 모든 조건 1.0 m/s (Low-30 60cm/s 변형은 실험 중 수동 조절)
+  if (n < 1 || n > 7) {
+    Serial.println("Preset: 1~7 (High30/High0/Mid30/Mid0/Low30/Low0/Low45)");
     return;
   }
   noInterrupts();
-  GCP_FORCE_ONSET     = 0.60f;
-  GCP_FORCE_PEAK      = 0.72f;
+  GCP_FORCE_ONSET     = 0.55f;
+  GCP_FORCE_PEAK      = 0.70f;
   GCP_FORCE_RELEASE   = 0.85f;
   PEAK_FORCE_N        = 50.0f;
   FF_GAIN_F           = 0.15f;
-  TFF_GAIN            = 0.55f;
-  FF_GAIN_MOTION      = 0.50f;
+  TFF_GAIN            = tff_gains[n];
+  FF_GAIN_MOTION      = motion_ffs[n];
   treadmill_speed_mps = 1.00f;
   ZONE4_PAYOUT_DEG    = 150.0f;
   interrupts();
   Serial.print("✅ Preset "); Serial.print(n);
   Serial.print(" ["); Serial.print(names[n]); Serial.println("] loaded");
-  Serial.println("   onset=0.60 peak=0.72 release=0.85 PF=50N");
-  Serial.println("   ActFF=0.15 TFF=0.55 MotFF=0.50 belt=1.0m/s Z4=150deg");
+  Serial.println("   onset=0.55 peak=0.70 release=0.85 PF=50N");
+  Serial.print("   TFF="); Serial.print(tff_gains[n], 2);
+  Serial.print(" MotFF="); Serial.print(motion_ffs[n], 2);
+  Serial.println(" ActFF=0.15 belt=1.0m/s Z4=150deg");
 }
 
 // ================================================================
@@ -3165,12 +3225,20 @@ void handleCommand(String cmd) {
     Serial.println("PEAK_FORCE_N = " + String(PEAK_FORCE_N, 2));
     return;
   }
-  // ★ ft: 최소 장력 설정 (Force minimum Tension)
+  // ★ ft: 최소 장력 설정 (Force minimum Tension, one-shot pretension)
   if (cmd.startsWith("ft")) {
     noInterrupts();
-    MIN_TENSION_N = cmd.substring(2).toFloat();
+    MIN_TENSION_N = clampf(cmd.substring(2).toFloat(), 0.0f, 30.0f);
     interrupts();
     Serial.println("MIN_TENSION_N = " + String(MIN_TENSION_N, 2) + " N");
+    return;
+  }
+  // ★ fw: Warmup pretension 장력 설정 (Force Warmup tension)
+  if (cmd.startsWith("fw")) {
+    noInterrupts();
+    WARMUP_TENSION_N = clampf(cmd.substring(2).toFloat(), 0.0f, 30.0f);
+    interrupts();
+    Serial.println("WARMUP_TENSION_N = " + String(WARMUP_TENSION_N, 2) + " N");
     return;
   }
   // ★ ff: Feedforward 게인 조절 (F_cmd 비례)
@@ -3262,7 +3330,7 @@ void handleCommand(String cmd) {
     return;
   }
 
-  // ★ preset<N>: 실험 프리셋 (1=High30, 2=High0, 3=Mid30, 4=Mid0, 5=Low30, 6=Low0)
+  // ★ preset<N>: 실험 프리셋 (1=High30, 2=High0, 3=Mid30, 4=Mid0, 5=Low30, 6=Low0, 7=Low45)
   if (cmd.startsWith("preset")) {
     applyPreset(cmd.substring(6).toInt());
     return;
@@ -3298,7 +3366,7 @@ void sendWalkerDataToSerial(
 
     int len = snprintf(serialTxBuffer, sizeof(serialTxBuffer),
         "SW%dc%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn%dn",
-        WALKER_DATA_COUNT,
+        19,
         (int)(l_gcp * 100.0f),
         (int)(r_gcp * 100.0f),
         (int)(l_pitch * 100.0f),
@@ -3397,34 +3465,86 @@ void handleBleCommand(const char* cmd) {
     return;
   }
 
-  // === Enable/Disable ===
-  if (cmd[0] == 'e' && cmd[1] == '\0') {
-    if (safetyTriggered[SIDE_LEFT] || safetyTriggered[SIDE_RIGHT]) {
-      Serial.println("⚠️ [BLE] Safety triggered! Reset with 'r' first");
-      return;
-    }
-    motorEnabled = !motorEnabled;
-    bleStreamEnabled = motorEnabled;
-    if (motorEnabled) {
-      initMotorEnable();
-      Serial.println("✅ [BLE] Motors ENABLED + BLE Stream ON");
-      sendBleResponse("MOTORS_ON");
-    } else {
-      disableMotors();
-      bleStreamEnabled = false;
-      Serial.println("❌ [BLE] Motors DISABLED + BLE Stream OFF");
-      sendBleResponse("MOTORS_OFF");
-    }
+  // === BLE 연결/해제 알림 (Nano33BLE Bridge에서 전송) ===
+  // bleStreamEnabled / motorEnabled 절대 건드리지 않음
+  // 오직 'e'(enable) / 'd'(disable) 명령만이 동작을 결정
+  if (strcmp(cmd, "blecon") == 0) {
+    Serial.print("[BLE] Connected  stream=");
+    Serial.print(bleStreamEnabled ? "ON" : "OFF");
+    Serial.print("  motor=");
+    Serial.println(motorEnabled ? "ON" : "OFF");
+    return;
+  }
+  if (strcmp(cmd, "bledis") == 0) {
+    bleStreamEnabled = false;  // 재연결 후 'e' 다시 눌러야 스트림 시작
+    Serial.print("[BLE] Disconnected → stream OFF  motor=");
+    Serial.println(motorEnabled ? "ON(kept)" : "OFF");
     return;
   }
 
-  // === Disable Only ===
+  // === 모터 상태 쿼리 ===
+  if (strcmp(cmd, "mstatus") == 0) {
+    sendBleResponse(motorEnabled ? "MOTORS_ON" : "MOTORS_OFF");
+    Serial.print("[BLE] mstatus → "); Serial.println(motorEnabled ? "ON" : "OFF");
+    return;
+  }
+
+  // === 통신/제어 진단 ===
+  if (strcmp(cmd, "diag") == 0 || strcmp(cmd, "bstatus") == 0) {
+    bool stream, motor, logging;
+    uint32_t txSent, txSkip, rxCmd, dropped, head, tail;
+    noInterrupts();
+    stream = bleStreamEnabled;
+    motor = motorEnabled;
+    logging = isLogging;
+    txSent = bleTxSentCount;
+    txSkip = bleTxSkipCount;
+    rxCmd = bleRxCommandCount;
+    dropped = logDropCount;
+    head = logHead;
+    tail = logTail;
+    interrupts();
+
+    uint32_t logPending = (head >= tail) ? (head - tail) : (RING_BUFFER_SIZE - tail + head);
+    char resp[128];
+    snprintf(resp, sizeof(resp),
+             "DIAG:stream=%u,motor=%u,log=%u,tx=%lu,skip=%lu,rx=%lu,drop=%lu,lp=%lu",
+             stream ? 1 : 0,
+             motor ? 1 : 0,
+             logging ? 1 : 0,
+             (unsigned long)txSent,
+             (unsigned long)txSkip,
+             (unsigned long)rxCmd,
+             (unsigned long)dropped,
+             (unsigned long)logPending);
+    sendBleResponse(resp);
+    Serial.println(resp);
+    return;
+  }
+
+  // === Enable/Disable ===
+  // === Enable — 항상 ON (토글 아님) ===
+  if (cmd[0] == 'e' && cmd[1] == '\0') {
+    if (safetyTriggered[SIDE_LEFT] || safetyTriggered[SIDE_RIGHT]) {
+      Serial.println("⚠️ [BLE] Safety triggered! Reset with 'r' first");
+      sendBleResponse("SAFETY_ERR");
+      return;
+    }
+    motorEnabled    = true;
+    bleStreamEnabled = true;   // 'e' 명령만이 스트림+모터를 시작
+    initMotorEnable();
+    Serial.println("✅ [BLE] ENABLE → motors ON, stream ON");
+    sendBleResponse("MOTORS_ON");
+    return;
+  }
+
+  // === Disable — 항상 OFF ===
   if (cmd[0] == 'd' && cmd[1] == '\0') {
-    motorEnabled = false;
-    bleStreamEnabled = false;
-    desiredCurrent_A[SIDE_LEFT] = 0.0f;
-    desiredCurrent_A[SIDE_RIGHT] = 0.0f;
-    Serial.println("❌ [BLE] Motors DISABLED");
+    motorEnabled    = false;
+    bleStreamEnabled = false;  // 'e' 없이는 재연결 후에도 스트림 OFF
+    disableMotors();
+    Serial.println("❌ [BLE] DISABLE → motors OFF, stream OFF");
+    sendBleResponse("MOTORS_OFF");
     return;
   }
 
@@ -3554,6 +3674,22 @@ void handleBleCommand(const char* cmd) {
   }
 
   // === Save / Logging ===
+  if (strcmp(cmd, "stop_log") == 0) {
+    if (isLogging) {
+      stopLogging();
+      sendBleResponse("LOG_STOP_REQUESTED");
+    } else {
+      sendBleResponse("LOG_IDLE");
+    }
+    logPausedByGUI = true;
+    return;
+  }
+  if (strcmp(cmd, "resume_log") == 0) {
+    logPausedByGUI = false;
+    sendBleResponse("LOG_RESUMED");
+    return;
+  }
+
   if ((cmd[0]=='s' && cmd[1]=='\0') || strncmp(cmd, "save", 4) == 0) {
     if (strncmp(cmd, "save", 4) == 0 && cmd[4] != '\0') {
       const char* fname = cmd + 4;
@@ -3683,6 +3819,11 @@ void setup() {
   else
     Serial.println("✅ 1kHz command timer started");
 
+  // 'e' 명령을 받아야만 스트림+모터가 시작됨
+  // BLE 연결/해제는 이 상태를 변경하지 않음
+  bleStreamEnabled = false;
+  Serial.println("[BLE] Stream OFF — press Enable ('e') to start");
+
   printHelp();
 }
 
@@ -3762,14 +3903,12 @@ void loop() {
     // getGCP()은 noInterrupts 밖에서 호출 — 함수 계산이 ISR 지연 유발 방지
     float bl_lgcp = left_Detector.getGCP();
     float bl_rgcp = right_Detector.getGCP();
-    float bl_lpitch, bl_rpitch, bl_lgy, bl_rgy;
+    float bl_lpitch, bl_rpitch;
     float bl_ldesf, bl_rdesf, bl_lactf, bl_ractf;
     uint32_t bl_mark;
     noInterrupts();
     bl_lpitch = snapL.pitch;
     bl_rpitch = snapR.pitch;
-    bl_lgy   = snapL.gy;
-    bl_rgy   = snapR.gy;
     bl_ldesf = desiredForce_N[SIDE_LEFT];
     bl_rdesf = desiredForce_N[SIDE_RIGHT];
     bl_lactf = actualForce_N[SIDE_LEFT];
@@ -3780,10 +3919,20 @@ void loop() {
     sendWalkerDataToBLE(
       bl_lgcp, bl_rgcp,
       bl_lpitch, bl_rpitch,
-      bl_lgy, bl_rgy,
       bl_ldesf, bl_rdesf,
       bl_lactf, bl_ractf,
       bl_mark);
+  }
+
+  // BLE 스트림 진단 — 5초마다 Teensy USB Serial 출력
+  // bleTxSentCount 증가 확인용 (Nano가 못 보내도 Teensy 쪽 문제인지 파악)
+  static uint32_t lastBleDbg = 0;
+  if (millis() - lastBleDbg >= 5000) {
+    lastBleDbg = millis();
+    Serial.print("[BLE DBG] stream="); Serial.print(bleStreamEnabled ? "ON" : "OFF");
+    Serial.print(" sent="); Serial.print(bleTxSentCount);
+    Serial.print(" skip="); Serial.print(bleTxSkipCount);
+    Serial.print(" rxCmd="); Serial.println(bleRxCommandCount);
   }
 
   // USB Serial 데이터 스트리밍 (BLE와 동일한 스냅샷 패턴 적용)

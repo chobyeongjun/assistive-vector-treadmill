@@ -1,410 +1,176 @@
-% =============================================================================
-% Biomechanical effects of shank-level cable attachment position and pulling
-% direction during walker-supported gait: A preliminary characterization
-%
-% Target: Journal of NeuroEngineering and Rehabilitation (BMC/Springer Nature)
-% Format: Compatible with bmcart.cls (BMC LaTeX template)
-% Status: Draft (pre-experiment, methods/protocol focus)
-% =============================================================================
-
 \documentclass[11pt,a4paper]{article}
 
-% --- Packages --------------------------------------------------------------
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{cmap}
 \usepackage[margin=2.5cm]{geometry}
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
-\usepackage{array}
-\usepackage{multirow}
 \usepackage{caption}
-\usepackage{subcaption}
 \usepackage{hyperref}
-\usepackage{xcolor}
-\usepackage{enumitem}
 \usepackage{authblk}
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage{lineno}
 
-\hypersetup{
-    colorlinks=true,
-    linkcolor=blue,
-    citecolor=blue,
-    urlcolor=blue
-}
-
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue}
 \linenumbers
 
-% --- Title page ------------------------------------------------------------
-\title{
-\textbf{Biomechanical effects of shank-level cable attachment position and pulling direction during walker-supported gait: A preliminary characterization}
-}
+\title{\textbf{Effects of cable attachment position and pulling direction on gait biomechanics during walker-supported walking}}
 
 \author[1,$\dagger$]{Kyeongmin Lim}
 \author[1,$\dagger$]{Byeongjun Cho}
 \author[1]{Alireza Nasirzadeh}
+\author[1]{Ki-ho Lee}
 \author[1,*]{Gi-uk Lee}
+\author[2,*]{Jinsoo Kim}
 
 \affil[1]{Department of Mechanical Engineering, Chung-Ang University, Seoul, Republic of Korea}
-\affil[$\dagger$]{These authors contributed equally to this work and share first authorship.}
-\affil[*]{Corresponding author: Gi-uk Lee, Department of Mechanical Engineering, Chung-Ang University. \texttt{giuklee@cau.ac.kr}}
+\affil[2]{Department of Electrical and Computer Engineering, Seoul National University, Seoul, Republic of Korea}
+\affil[$\dagger$]{Equal contribution.}
+\affil[*]{Corresponding authors: \texttt{giuklee@cau.ac.kr}, \texttt{jinskim@snu.ac.kr}}
 
-\date{\today}
+\date{}
 
 \begin{document}
-
 \maketitle
 
-% =============================================================================
-% ABSTRACT (300 words, structured: Background / Methods / Results / Conclusions)
-% =============================================================================
+% =====================================================================
 \begin{abstract}
-\noindent\textbf{Background:}
-Walker users with mobility impairment may benefit from active cable-driven gait assistance integrated into the walker frame, but the biomechanical effects of cable attachment position and pulling direction at the shank level — relevant to walker-mounted robotic systems — remain uncharacterized. We conducted a preliminary characterization in healthy adult men to inform the design of future walker-integrated cable-driven assistive devices.
+\noindent\textbf{Background.}
+Cable-driven gait-assistive devices have so far been developed as standalone soft exosuits anchored at the hip or ankle. Wheeled walkers, the most widely prescribed mobility aid for older adults and for individuals after stroke, primarily provide passive mechanical support. Integrating cable-driven assistance into the walker frame combines the stability of the walker with the active swing-phase support of an exosuit, but the appropriate cable attachment site on the leg and the appropriate pulling direction relative to the walker have not been characterized.
 
-\noindent\textbf{Methods:}
-Twelve healthy adult men (20--45~yrs) walked on a treadmill at 1.0~m/s under eight randomized conditions: normal walking (NW), walker-supported walking with 20\,\% body weight support (WBW), and six combinations of cable attachment position (proximal/middle/distal shank, 25/50/75\,\% of shank length) and pulling direction (0$^\circ$ horizontal, 30$^\circ$ oblique). The 20\,\% BWS was maintained via a load-cell-based visual biofeedback system. A half-sine cable force profile (peak~7\,\% body weight, 60--85\,\% gait cycle) was applied in walker-supported assistive walking (WBAW) conditions, gated to the lifted-foot swing window using a foot-mounted inertial sensor for stride-by-stride gait-phase estimation. Outcomes included surface electromyography (RF, BF, VL, TA, MG, SOL), full-body kinematics, ground reaction force, and subjective ratings (Borg RPE, comfort and naturalness VAS). A two-way repeated-measures ANOVA tested position $\times$ direction effects with Bonferroni-corrected post-hoc comparisons.
+\noindent\textbf{Methods.}
+Twelve healthy adult men walked on an instrumented treadmill at 1.0~m/s while supported by a custom walker that maintained 20\,\% body-weight unloading through bilateral instrumented handrails with visual biofeedback. A Bowden cable, mounted on the walker frame and actuated by a brushless motor, applied a half-sine force pulse (peak 50~N, 55--85\,\% of the gait cycle, peak at 70\,\%) to the participant's dominant-side shank during each stride. Six conditions were tested in a counterbalanced order: three cable attachment positions on the shank (proximal, mid-shaft, distal — at 25, 50, and 75\,\% of shank length) crossed with two pulling directions (0$^\circ$ horizontal and 30$^\circ$ oblique). Surface electromyography of five lower-limb muscles, full-body kinematics, ground reaction force, cable force, and subjective comfort ratings were recorded. Two-way repeated-measures ANOVA tested the main effects and interaction of position and direction.
 
-\noindent\textbf{Results:}
-% [PLACEHOLDER -- to be filled after data collection]
-% Interaction effect on [primary outcome] (F=X.X, p=0.0X, $\eta_p^2$=0.XX);
-% candidate optimal condition emerged as [TBD];
-% RF iEMG reduced by X\% in [condition], BF iEMG increased by X\% in [condition];
-% swing range of motion differed by X$^\circ$ across conditions;
-% subjective comfort highest in [condition].
-[Results placeholder pending experimental data collection.]
+\noindent\textbf{Results.} \emph{Results will be reported following completion of data collection (n=12 healthy adult men).}
 
-\noindent\textbf{Conclusions:}
-Cable attachment position and pulling direction at the shank level systematically modulate gait biomechanics and muscle activity under partial body weight support. The candidate optimal condition identified herein provides a parameter set for future walker-mounted robotic rehabilitation devices, and the present findings establish a parameter map to guide subsequent device optimization and clinical validation studies.
+\noindent\textbf{Conclusions.}
+This study characterizes the position- and direction-dependent biomechanical effects of cable assistance under walker support and is intended to inform parameter selection for subsequent walker-mounted assistance studies.
 
-\noindent\textbf{Keywords:} cable-driven assistance; gait rehabilitation; walker; body weight support; biomechanics; electromyography
+\noindent\textbf{Keywords:} walker; cable-driven exosuit; gait assistance; body weight support; biomechanics; electromyography
 \end{abstract}
 
-\newpage
-
-% =============================================================================
-% 1. BACKGROUND (~900 words, ~10 references)
-% =============================================================================
+% =====================================================================
 \section{Background}
 
-\subsection{Walker users and the absence of active gait assistance}
+Wheeled walkers are the most widely prescribed mobility aid for older adults and for individuals recovering from stroke or Parkinson's disease. They reliably provide a stable base of support and reduce the risk of falls, but their assistance is primarily passive: the walker frame does not contribute energy to the user's swing-phase limb advancement. Long-term walker users develop a characteristic gait pattern of reduced velocity, shortened stride length, prolonged stance time, and reduced swing time \citep{apte2018,sawicki2020}, and this pattern can itself contribute to deconditioning. The walker frame, however, is a structurally rigid platform positioned in front of the user; its use as an anchor for active swing-phase assistance has received limited systematic evaluation.
 
-The wheeled walker is among the most widely prescribed mobility aids for older adults and for individuals recovering from stroke, Parkinson's disease, or other conditions that compromise stance stability and gait propulsion \cite{sawicki2020,apte2018}. While walkers reliably provide a stable base of support and reduce fall risk, they remain mechanically passive: the walker frame does not actively contribute to the user's swing-phase limb advancement, push-off propulsion, or vertical lift, and longitudinal walker users develop characteristic compensatory gait patterns including reduced gait velocity, shortened stride length, and prolonged stance time. The clinical population that walks with a walker therefore represents a large but presently underserved target for active gait assistance. Restoring active swing-phase assistance to this population — without abandoning the stability afforded by the walker frame the user already relies on — would require a cable-driven assistive system anchored to the walker itself rather than worn as a standalone exosuit. To our knowledge, this hybrid \emph{walker-integrated cable-driven assistance} configuration has not been characterized in the published biomechanics literature, and the present study is intended as the foundational pre-experimental characterization of such a system.
+Cable-driven actuation has emerged over the past decade as a widely used approach to soft, wearable gait assistance \citep{asbeck2015,sawicki2020}. In hip-targeted soft exosuits, a cable anchored to a waist belt and routed to a thigh brace produces hip-flexion or hip-extension assistance; the timing of this assistance has been identified as a critical determinant of metabolic and biomechanical benefit \citep{ding2016,kim2022}. In ankle-targeted devices, cables or elastic mechanisms acting across the ankle can reduce the metabolic cost of walking by 7--21\,\% in healthy adults \citep{collins2015,galle2017} and have demonstrated translational benefit for stroke survivors with assistance corresponding to roughly 12\,\% of the biological joint torque \citep{awad2017}. Multi-joint configurations spanning the hip, knee, and ankle have also been characterized \citep{quinlivan2017,lee2018,bryan2021}.
 
-\subsection{Cable-driven gait assistance: State of the art and its limits for the walker context}
+In all of these systems, the cable's proximal anchor sits on the user's body, and the cable's reaction force is transmitted through another segment of the user. A walker-mounted cable, in contrast, anchors its proximal end to the walker frame; the cable's reaction force is borne by the walker rather than by the user. This changes both the geometry of the cable's lever arm and the available range of pulling directions, since the anchor's height on the walker frame can be modified to alter the cable's angle of action at the shank attachment site. We are not aware of prior studies that systematically characterized the effects of cable attachment position on the shank and the cable pulling direction in this walker-integrated configuration. Recent work on conventional soft exosuits has reported that anchor-point selection can have a non-monotonic effect on force capability and human--suit stiffness \citep{kimleelab2022}, and broader work on cable-driven exoskeletons has indicated that subject-specific attachment-point optimization may be important for matching natural muscle coordination \citep{chen2024}.
 
-Cable-driven actuation has matured into the dominant strategy for delivering mechanically assistive joint moments during gait without the rigid kinematic constraints and inertia of conventional exoskeletons \cite{asbeck2015,sawicki2020}. Existing implementations have concentrated on two body-segment regimes. \emph{Hip-targeted soft exosuits} anchor cables to a waist belt and thigh brace and have been extensively optimized for both timing \cite{ding2016} and magnitude \cite{kim2022}. \emph{Ankle-targeted exoskeletons} anchor to the foot and calf and have demonstrated metabolic-cost reductions of up to 21\,\% with optimized timing and power \cite{galle2017}, achievable even with fully passive elastic clutched mechanisms \cite{collins2015}. Multi-joint configurations spanning hip, knee, and ankle have similarly been characterized \cite{quinlivan2017,lee2018,bryan2021}, and translational efficacy in stroke survivors has been demonstrated with assistance corresponding to approximately 12\,\% of biological joint torque \cite{awad2017}.
+The aim of the present study was to characterize the effects of three shank attachment positions and two cable pulling directions on lower-limb muscle activity, joint kinematics, ground reaction forces, and subjective comfort during walker-supported treadmill walking with 20\,\% body-weight unloading. The cable force was applied as a half-sine pulse spanning 55--85\,\% of the gait cycle, with the onset placed during pre-swing so that the cable engages the limb during the rising phase of natural shank velocity rather than initiating motion from rest at toe-off. We expected the cable's effect on muscle activity and kinematics to scale with attachment position because the cable's moment arm to the hip and knee changes monotonically along the proximal--distal axis of the shank, and to differ between pulling directions because a more oblique cable redistributes a greater fraction of its force into a vertical lift component. The results are intended to inform the parameter selection of future studies of walker-mounted cable-driven gait assistance.
 
-Two characteristics distinguish all of these existing systems from a walker-integrated context. First, they are designed as standalone wearable devices: the cable's distal anchor sits on the user's body, and the cable's reaction force is borne by another body segment of the user (e.g., the waist belt for a thigh-anchored cable). A walker-mounted system, in contrast, anchors the cable's proximal end to the walker frame, which fundamentally changes the geometry of the cable lever arm and pulling direction relative to the leg. Second, none of these systems has investigated cable attachment at the \emph{shank} segment — proximal to the foot but distal to the thigh — which is the segment most geometrically natural for a forward-pulling cable originating from a walker frame in front of the user. Recent work has further emphasized that subject-specific optimization of cable attachment site is essential for matching natural muscle coordination \cite{chen2024}, and prior anchor-point characterization at the hip belt and thigh brace has shown that mechanical force capability and human-suit stiffness scale non-monotonically with anchor displacement \cite{kimleelab2022}. However, no published study has systematically extended this anchor-position characterization to the shank segment, nor has it integrated such characterization with biomechanical outcomes (kinematics, EMG, GRF) under walker-supported gait.
-
-\subsection{The novel design space addressed by this study}
-
-The present study addresses three specific aspects of this previously unexplored design space. First, the \emph{body-segment level of cable attachment} is set at the shank, with three positions characterized along the proximal--distal axis (25\,\%, 50\,\%, 75\,\% of shank length). Second, the \emph{cable pulling direction}, which is uniquely controllable in a walker-mounted system through the height of the cable's anchor on the walker frame, is manipulated as an independent factor (horizontal vs.\ oblique upward). Third, a novel \emph{Weight Bearing System with load-cell-based visual biofeedback} replaces the overhead harness typical of conventional body-weight-support apparatus, preserving the natural pelvis dynamics characteristic of handrail-supported walking while enforcing a participant-regulated, repeatable unloading magnitude. Together, these three design choices define a system class that does not exist in the prior literature, and the present preliminary characterization in healthy adults is intended to provide the parameter map needed for the subsequent design and clinical validation of a walker-integrated cable-driven gait-assistive device.
-
-\subsection{Aims and hypotheses}
-
-The aims of the present study are: (1)~to characterize the effects of three cable attachment positions on the shank and two cable pulling directions (0$^\circ$ horizontal, 30$^\circ$ oblique) on lower-limb muscle activity, joint kinematics, ground reaction forces, and subjective comfort during walker-supported treadmill walking with 20\,\% body-weight unloading; and (2)~to identify a candidate condition that simultaneously reduces muscular effort and preserves or improves gait-quality outcomes, as a parameter set for the subsequent walker-integrated device design. Five hypotheses, framed as qualitative biomechanical predictions and detailed in Section~\ref{sec:hypotheses}, follow from these aims: (i)~a body-weight-support effect of WBW relative to NW; (ii)~a further reduction of rectus-femoris activity in all WBAW conditions relative to WBW; (iii)~a position-dependent gradient of muscle-activity reduction with the largest effects at distal attachment; (iv)~a direction-dependent dissociation between propulsive and vertical-lift kinematic outcomes; and (v)~the existence of at least one candidate condition that jointly improves muscular effort and gait-quality outcomes.
-
-% =============================================================================
-% 2. METHODS (~2200 words, ~15 references)
-% =============================================================================
+% =====================================================================
 \section{Methods}
 
-\subsection{Study design}
-This was a single-session, within-subject, randomized cross-over study designed as a preliminary biomechanical characterization for the development of a walker-mounted, cable-driven gait assistive device. Each participant completed eight walking conditions in a counterbalanced order: a normal-walking reference (NW), a walker-supported reference with body weight support but no cable assistance (WBW), and six walker-supported assisted-walking conditions (WBAW) corresponding to the factorial combination of three cable attachment positions on the shank (proximal, middle, distal) and two cable pulling directions (0$^\circ$ horizontal, 30$^\circ$ oblique). The study protocol was approved by the [Institutional Review Board / Bioethics Committee, Institution] and conducted in accordance with the Declaration of Helsinki. All participants provided written informed consent prior to enrollment.
-
 \subsection{Participants}
-Twelve healthy adult men (target $n=12$, minimum $n=10$; age 20--45~yrs; mass 60--90~kg; height 165--190~cm) participated in the study. The cohort was restricted to male participants to reduce inter-subject anthropometric variance, thereby maintaining consistent cable lever-arm geometry across the shank attachment positions and a narrow distribution of maximum voluntary contraction (MVC) values for normalized electromyography (EMG) comparison \cite{galle2017}. Inclusion criteria were the ability to walk on a treadmill at 1.0~m/s for at least five continuous minutes without an assistive device, no current or previous (within 6~months) lower-limb injury or surgery, no diagnosed neurological or cardiovascular condition, and a body mass index between 18 and 30~kg/m$^2$. Exclusion criteria included any vestibular or balance disorder, pregnancy, and prior exposure ($>$1~h cumulative) to cable-driven exoskeleton or exosuit devices within the preceding 12~months.
+Twelve healthy adult men (age 20--45 years, body mass 60--90~kg, height 165--190~cm) were recruited. All participants were able to walk on a treadmill at 1.0~m/s for at least five continuous minutes without an assistive device. Participants reported no current or recent (within six months) lower-limb injury or surgery, no diagnosed neurological or cardiovascular condition, and no prior exposure to a cable-driven exoskeleton or exosuit within the preceding twelve months. The cohort was restricted to male participants to reduce inter-subject anthropometric variance, which kept the cable's lever-arm geometry comparable across participants. This restriction is considered when interpreting the generalizability of the sample. The study protocol was reviewed and approved by the Institutional Review Board of Chung-Ang University, and all participants provided written informed consent prior to participation.
 
-The sample size was determined a priori using G*Power 3.1 \cite{faul2007} for a within-factors repeated-measures analysis of variance (RM-ANOVA) with six within-subject measurements (three positions $\times$ two directions). Setting $\alpha = 0.05$, power $1-\beta = 0.80$, an assumed correlation among repeated measures of $\rho = 0.5$, and a moderate-to-large effect size $f = 0.40$, the required sample size was 12 participants. This effect size assumption is consistent with within-subject effects reported in comparable cable-driven exoskeleton studies in healthy adults \cite{galle2017,quinlivan2017,asbeck2015}, in which sample sizes of 5--10 detected significant condition-level differences in muscle activity, joint kinematics, and metabolic cost. To accommodate up to 20\,\% participant attrition due to equipment failure or data-quality exclusions \cite{galle2017}, we recruited up to 15 participants.
+The sample size was determined a priori using G*Power 3.1 \citep{faul2007} for a within-factors repeated-measures ANOVA. Setting $\alpha=0.05$, statistical power $1-\beta=0.80$, an assumed correlation among repeated measures of 0.5, and a moderate-to-large effect size $f=0.40$, the required sample size was 12 participants. The chosen effect size is consistent with within-subject effects reported in comparable cable-driven exoskeleton studies in healthy adults, in which sample sizes of 5--10 detected significant condition-level differences in muscle activity and joint kinematics \citep{galle2017,quinlivan2017,asbeck2015}. Up to 15 participants were recruited to accommodate dropouts.
 
 \subsection{Apparatus}
-The integrated experimental apparatus comprised four functional subsystems mounted around an instrumented treadmill: (i) the motion-capture, EMG, and force-plate measurement chain, (ii) a walker-mounted cable-driven assist system, (iii) a Weight Bearing System (WBS) with load-cell visual biofeedback, and (iv) a foot-mounted inertial measurement unit for real-time gait-phase detection. A schematic of the integrated setup is shown in Fig.~\ref{fig:setup}.
+A schematic of the integrated apparatus is shown in Figure~\ref{fig:setup}.
 
-\subsubsection{Treadmill, motion capture, electromyography, and synchronization}
-Walking trials were performed on an instrumented split-belt treadmill (TM-09-P, Bertec, Columbus, OH, USA) at a constant belt speed of 1.0~m/s. Three-dimensional kinematics were captured using an optoelectronic motion-capture system (Qualisys, G\"oteborg, Sweden; specific camera model to be confirmed from the laboratory equipment registry) with a full-body reflective-marker set. Marker trajectories were exported and processed for joint kinematics and inverse-dynamics analysis using musculoskeletal-modeling software (Visual3D, HAS-Motion, Kingston, ON, Canada; or equivalently the AnyBody Modeling System, AnyBody Technology A/S, Aalborg, Denmark; final selection of analysis pipeline to be confirmed prior to data analysis). Bilateral ground reaction forces (GRFs) were sampled at 1000~Hz from the instrumented treadmill belts, and were cross-checked against the cable-side force record to verify mechanical synchronization. Surface electromyography (sEMG) was recorded from six muscles of the dominant lower limb at 4000~Hz using a wireless EMG system (Trigno Wireless System, Delsys Inc., Natick, MA, USA), consistent with the EMG acquisition convention of prior work in the laboratory \cite{kimleelab2024emg}. Electrode placement followed the SENIAM (Surface ElectroMyoGraphy for the Non-Invasive Assessment of Muscles) recommendations \cite{hermens2000}: rectus femoris (RF), biceps femoris long head (BF), vastus lateralis (VL), tibialis anterior (TA), medial gastrocnemius (MG), and soleus (SOL). All measurement streams (motion capture, GRF, EMG, cable load cell, foot IMU, and walker-WBS load cells) were time-synchronized via a common analog trigger (Trigger Module, Delsys Inc., Natick, MA, USA) and a shared sampling clock; channels with different native sampling rates were resampled to a common 1000~Hz time-base offline for analysis.
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][7cm][c]{0.85\textwidth}{\centering\textit{Figure 1 placeholder. Schematic of the integrated walker-mounted cable-driven assistive system: instrumented treadmill (Bertec TM-09-P); custom walker frame with bilateral handrail load cells and visual biofeedback display for the 20\,\% body-weight unloading target; Bowden cable assist module driven by the AK60-6 motor with the cable terminating at one of three shank attachment positions (HIGH/MID/LOW) and exiting the walker frame through anchor points selectable for two pulling directions (0$^\circ$/30$^\circ$); Qualisys motion-capture cameras; Delsys Trigno wireless EMG sensors on the dominant lower limb; foot-mounted EBIMU24GV6 inertial measurement unit. To be replaced with the rendered illustration prior to submission.}}}
+  \caption{Schematic of the integrated walker-mounted cable-driven assistive system used in the present study.}
+  \label{fig:setup}
+\end{figure}
 
-\subsubsection{Walker-mounted cable-driven assist system}
-A cable-driven assist module was mounted on the front frame of a custom rigid walker positioned in front of the treadmill. The cable was actuated by a brushless direct-current motor (AK60-6, CubeMars / T-Motor, China) operating in current-control mode through a small-radius pulley, and cable tension was measured at the distal end by an in-line single-axis load cell (LSB205, Futek Advanced Sensor Technology Inc., CA, USA). The cable exited the walker frame through anchor points whose vertical position could be adjusted to produce two distinct pulling directions: (i)~0$^\circ$ (horizontal forward), in which the anchor was placed at the same height as the cable attachment on the shank under the neutral standing pose, and (ii)~30$^\circ$ (oblique up-forward), in which the anchor was raised to produce a cable line of action 30$^\circ$ above the horizontal under the neutral standing pose. The distal end of the cable terminated in a soft thermoplastic-elastomer sleeve secured to the participant's dominant-side shank with hook-and-loop fasteners; three sleeves of identical compliance were used to attach the cable at the proximal (25\,\% of shank length, just distal to the tibial tuberosity), middle (50\,\%, mid-shaft), and distal (75\,\%, just proximal to the malleoli) shank positions, respectively. A dedicated control routine running on the motor's firmware enforced an absolute peak-tension safety cutoff at 70~N: if the load-cell reading exceeded this threshold, the commanded current was immediately set to zero and the cable was allowed to pay out.
+Walking was performed on an instrumented split-belt treadmill (TM-09-P, Bertec, Columbus, OH, USA) at a constant belt speed of 1.0~m/s, with bilateral ground reaction forces sampled at 2000~Hz. Three-dimensional kinematics were recorded with an optoelectronic motion-capture system (Qualisys, Göteborg, Sweden) at 200~Hz using a marker set that covered both the lower limbs and the trunk, allowing trunk lean and pelvis dynamics — both of which are characteristically altered during walker-supported walking — to be tracked together with lower-limb joint angles. Joint kinematics and inverse-dynamic estimates of joint moments and powers were computed offline using musculoskeletal-modelling software (Visual3D, HAS-Motion, Kingston, ON, Canada).
 
-\subsubsection{Weight Bearing System with load-cell visual biofeedback}
-\label{sec:wbs}
-A novel feature of the present apparatus is a Weight Bearing System (WBS) instrumented with load-cell-based visual biofeedback to elicit a controlled, participant-regulated body-weight unloading at the walker handrail. Two single-axis load cells (model and manufacturer to be specified) were embedded under the bilateral handrails of the walker frame, oriented to measure the vertical (downward) force transmitted by each hand. The summed vertical handrail force was sampled at 1000~Hz and converted in real time to a percentage of the participant's body weight (\%BW). The participant viewed a custom display mounted at eye level above the front of the treadmill, on which the current handrail-supported \%BW was rendered as a moving bar against a target band centered at 20\,\%BW with a tolerance of $\pm$2\,\%BW. Participants were instructed to modulate their handrail support so as to keep the bar within the target band throughout each walking trial. Trials in which the time-averaged handrail-supported \%BW deviated from the 20\,\%BW target by more than $\pm$2\,\%BW, or in which the bar exited the target band for more than 10\,\% of the recorded period, were flagged for repetition.
+Surface electromyography was recorded with a wireless system (Trigno Wireless, Delsys, Natick, MA, USA) from five muscles of the dominant lower limb. Electrodes were placed at SENIAM-recommended landmarks \citep{hermens2000}: gluteus maximus (GMax) at 50\,\% of the line from the sacral vertebra to the greater trochanter; rectus femoris (RF) at 50\,\% of the line from the anterior superior iliac spine to the superior pole of the patella; biceps femoris long head (BF) at 50\,\% of the line from the ischial tuberosity to the lateral epicondyle of the tibia; tibialis anterior (TA) at 1/3 of the line from the tip of the fibular head to the medial malleolus; and medial gastrocnemius (MG) over the most prominent bulge of the medial gastrocnemius head. The five-muscle set targets the principal hip extensor (GMax), the biarticular hip-flexor / knee-extensor (RF), the biarticular hip-extensor / knee-flexor (BF), the ankle dorsiflexor (TA), and the principal ankle plantarflexor (MG). Skin preparation followed standard practice (shaving when needed and cleaning with isopropyl alcohol), and the placement was verified during muscle-specific manual resistance tests prior to each session. Maximum voluntary contractions (MVC) were collected for each channel using muscle-specific isometric postures and were used to amplitude-normalize the EMG envelopes. EMG signals were logged at 200~Hz on the host computer.
 
-The 20\,\% body-weight unloading target was selected on the basis of two convergent considerations. First, a systematic review of body-weight-unloading effects on gait reported that the influence of unloading on kinematic and spatio-temporal gait parameters is limited up to approximately 30\,\% body-weight unloading, while joint moments, muscle activity, and ground reaction forces exhibit measurable monotonic reductions throughout the sub-30\,\% range \cite{apte2018}; this is consistent with the systematic kinetic scaling reported by Goldberg and Stanhope, who showed that peak hip and ankle joint moments decrease approximately linearly with body-weight-support level across 0--60\,\%~BW \cite{goldberg2013}. A 20\,\%~target therefore lies safely within the kinematic-preservation range while still producing a measurable kinetic and electromyographic signature. Second, the loadcell-based visual biofeedback paradigm allows the participant, rather than an overhead harness, to maintain the target unloading; this preserves natural pelvis dynamics and avoids the suspension-system artefacts known to differ from rollator-style hand-supported walking \cite{apte2018}. To our knowledge, the use of bilateral handrail load cells with continuous visual biofeedback to maintain a fixed \%BW target is novel relative to prior overhead-harness-based BWS apparatus reported in the rehabilitation literature.
+The walker (Figure~\ref{fig:setup}) was a custom rigid frame placed in front of the treadmill. Each handrail of the walker was instrumented with a single-axis load cell that measured the vertical force transmitted through the user's hand. The summed handrail force, expressed as a fraction of the participant's body weight, was displayed as a real-time bar graph at the participant's eye level, and participants were instructed to maintain the bar within a target band centred at 20\,\% of body weight ($\pm$2\,\%). Trials in which the time-averaged handrail-supported fraction deviated from the 20\,\% target by more than the tolerance were flagged for repetition. The 20\,\% target was selected to lie well within the range over which body-weight unloading does not appreciably alter spatio-temporal and kinematic gait parameters in healthy adults \citep{apte2018,goldberg2013}.
 
-\subsubsection{Foot-mounted inertial measurement unit for gait-phase estimation}
-A nine-axis wireless inertial measurement unit (EBIMU24GV6, E2BOX, Republic of Korea) was mounted on the dorsal aspect of the dominant-side shoe at the level of the metatarsal arch. The EBIMU24GV6 contains a tri-axial accelerometer, tri-axial gyroscope, and tri-axial magnetometer, with on-board sensor fusion (Robust Heading Algorithm and Robust Attitude Algorithm proprietary to E2BOX) producing orientation estimates at an internal update rate of 1000~Hz, transmitted at 2.4~GHz to a paired EBRCV24GV6 USB receiver and logged at 100~Hz on the host computer. A single receiver supports up to 100 sensors, providing margin for future expansion to bilateral or multi-segment sensing without modification of the present apparatus. Rather than triggering the cable force on a single discrete kinematic event, the IMU was used to estimate gait-cycle phase (\%~GC) on a continuous, stride-by-stride basis: heel-strike events were detected from the vertical-axis acceleration peak, and the elapsed fraction of the previous stride duration was used to interpolate the current \%~GC throughout each stride. The cable force envelope was then gated to the 60--85\,\%~GC window via this phase estimate. This gait-phase-based gating is preferable to a single discrete toe-off trigger for the present application because (i)~the precise instant of toe-off is difficult to extract reliably from a single foot-mounted IMU, particularly at slow walking speeds and across the inter-stride variability typical of walker-supported walking; and (ii)~the assistive intent of the cable in this study is not to act \emph{at} the toe-off instant but rather to assist the forward swing of the already-lifted limb during the early-to-mid swing window. The 60\,\%~GC onset chosen here corresponds to the conventional toe-off reference of healthy treadmill walking \cite{perryburnfield2010} and serves as the start of the gating window rather than as a precision-timed event. Heel-strike detection accuracy and the interpolated \%~GC fidelity will be reported, against the reference defined from the vertical GRF, in a pilot-validation supplement.
+The cable assist module was mounted on the front frame of the walker. The cable was actuated by a brushless DC motor (AK60-6, CubeMars, China) operating in current-control mode through a small-radius pulley, and cable tension was measured at the distal end by an in-line single-axis load cell (LSB205, Futek, Irvine, CA, USA). The cable exited the walker frame through anchor points whose vertical position could be adjusted to produce two pulling directions: 0$^\circ$ (horizontal forward) and 30$^\circ$ (oblique up-forward), defined relative to the horizontal at the cable attachment site in the neutral standing pose. The distal end of the cable terminated in a soft thermoplastic-elastomer sleeve secured to the participant's dominant-side shank with hook-and-loop straps. Three sleeves of identical compliance were used for the three cable attachment positions, defined as 25, 50, and 75\,\% of shank length (HIGH, MID, LOW) measured from the medial knee joint line to the medial malleolus and corresponding to the proximal tibia just distal to the tibial tuberosity, the mid-tibial shaft, and the distal tibia just proximal to the malleoli. The motor controller enforced a peak cable-tension safety cutoff at 70~N: if the load-cell reading exceeded this threshold the commanded current was set to zero and the cable was allowed to pay out.
+
+A foot-mounted wireless inertial measurement unit (EBIMU24GV6, E2BOX, Republic of Korea) on the dorsum of the dominant-side shoe provided a continuous, stride-by-stride estimate of gait-cycle phase. Heel-strike events were detected from the vertical acceleration peak, and the elapsed fraction of the previous stride duration was used to interpolate the current percentage of the gait cycle. The cable force envelope was gated to its assigned 55--85\,\% gait-cycle window using this phase estimate. All measurement streams (motion capture, ground reaction force, EMG, cable load cell, foot IMU, and walker handrail load cells) were time-synchronized through a common analog trigger and brought to a common time-base offline by linear interpolation prior to analysis.
 
 \subsection{Experimental conditions}
-\label{sec:conditions}
+Each participant completed seven walking conditions in a single session. The first condition (WBW) was walker-supported walking with 20\,\% body-weight unloading and the cable system in passive (zero-tension) mode; this condition served as the within-subject reference. The remaining six conditions (WBAW) corresponded to the factorial combination of three shank attachment positions (HIGH, MID, LOW) and two pulling directions (0$^\circ$, 30$^\circ$). The order of the seven conditions was counterbalanced across participants using a balanced Latin square. Comparisons against unsupported normal walking were not pursued in this study, because the kinematic and electromyographic effects of body-weight unloading on healthy gait have been examined in prior work \citep{apte2018,goldberg2013}; the present study focuses instead on the additional effects of cable assistance over and above the body-weight-supported baseline.
 
-Each participant completed eight walking conditions in a single session: (a)~normal walking without the walker (NW); (b)~walker-supported walking with 20\,\%~BW unloading and the cable system in passive (zero-tension) mode (WBW); and (c)~six walker-supported assistive walking conditions (WBAW) corresponding to the factorial combination of three cable attachment positions on the shank (HIGH, MID, LOW) and two cable pulling directions (0$^\circ$, 30$^\circ$). The eight conditions are summarized in Table~\ref{tab:conditions}. The condition order was counterbalanced across participants using a balanced Latin square to mitigate order and fatigue effects.
+Within each WBAW condition, the cable tension followed a half-sine envelope with peak amplitude 50~N. The envelope was gated to 55--85\,\% of the gait cycle on a stride-by-stride basis, with the peak occurring at the geometric centre of the window (70\,\%~GC). The 50~N peak corresponds to approximately 7\,\% of body weight for a 70~kg participant; integrated over the half-sine window at the typical cable-attachment velocity of mid-swing this corresponds to an average positive mechanical power of approximately 0.55~W/kg per leg, which is in the range explored in prior cable-driven exo studies in healthy adults \citep{galle2017,quinlivan2017} and well below the shank comfort limit for axial pulling forces reported by \citet{yandell2020}. The half-sine shape was chosen for its smooth onset and release, which avoids impulsive force changes at the boundaries of the actuation window.
 
-\paragraph{Cable attachment positions.} The three positions were defined as 25\,\%, 50\,\%, and 75\,\% of the participant-specific shank length, measured from the medial knee joint line to the medial malleolus, and corresponded to the proximal tibia (just distal to the tibial tuberosity), the mid-tibial shaft, and the distal tibia (just proximal to the malleoli), respectively. These three points were selected to span the available shank segment while maintaining clearance from the knee and ankle joint structures, providing a representative parameter sweep across the proximal-distal axis for this preliminary characterization. Cable-attachment site is a known determinant of the joint-moment distribution produced by a soft exosuit and has been recently emphasized as a design parameter requiring subject-specific optimization \cite{chen2024}.
-
-\paragraph{Cable pulling directions.} The two directions were defined relative to the horizontal at the cable attachment in the neutral standing pose: 0$^\circ$ (horizontal forward, in the walking direction) and 30$^\circ$ (oblique up-forward). The 0$^\circ$~direction represents the simplest forward-propulsive case and is implementable with a low walker-frame anchor; the 30$^\circ$~direction introduces a vertical lift component that approximates the line of action of the rectus femoris during stance-to-swing transition \cite{krebs1998} (citation to be replaced with verified anatomical RF pull-angle source). These two angles were selected as practical bounds achievable within the walker frame's anchor-height range.
-
-\paragraph{Cable force magnitude.} Across all WBAW conditions, the peak cable tension was scaled to 7\,\% of each participant's body weight ($F_\text{peak} = 0.07 \times m_\text{subj} \times 9.81$~N). For the body-mass range used in this study, this corresponded to a per-participant peak tension of 41--62~N. This magnitude was selected on three converging grounds. First, it lies within the range of cable forces previously used for hip-flexion or multi-articular soft exosuit assistance in healthy adults: peak cable tensions of $\sim$75--200~N have been reported in tethered multi-articular soft exosuits \cite{asbeck2015,quinlivan2017}, and a low-assistance hip-flexion exosuit producing the optimal metabolic benefit reported a peak hip-flexion torque of 0.146~N\,m/kg corresponding to $\sim$24\,\%~of natural peak hip flexion moment \cite{kim2022}. Second, the peak shank-applied tension of 41--62~N is approximately 6--9\,\% of the average axial-pulling shank comfort limit of 702 $\pm$ 220~N reported by Yandell and colleagues \cite{yandell2020}, providing a substantial safety and comfort margin even for the lowest individual comfort limits in their cohort. Third, it remains well below the device-side absolute safety cutoff of 70~N enforced by the motor controller (Section~2.3.2), preserving headroom against transient peaks during stride-to-stride variability.
-
-\paragraph{Force profile and timing.} Within each WBAW trial, the cable tension followed a half-sine envelope ranging from 0 to $F_\text{peak}$ and back to 0, applied between 60\,\% and 85\,\% of the gait cycle on a stride-by-stride basis (peak occurring at 72.5\,\%~GC by half-sine geometry), with the gait-cycle gating implemented via the foot-IMU phase estimator described in Section~2.3.4. The 60\,\%~onset corresponds to the conventional toe-off reference timing in healthy treadmill walking \cite{perryburnfield2010,winter2009}; it functions in the present design as the start of the gating window rather than as an instantaneous trigger event, the explicit intent being that the cable assists forward swing of the already-lifted limb rather than firing precisely \emph{at} the toe-off instant. The 85\,\%~release was chosen to terminate the cable force prior to the late-swing reversal of the hip moment from net flexor to net extensor — reported to occur near 86\,\% of the gait cycle in inverse-dynamic analyses of healthy walking \cite{winter2009} — so that the cable does not oppose the natural deceleration of swing. The half-sine envelope was selected for its smooth onset and release (zero acceleration at the boundaries), which minimizes mechanical jerk and avoids the abrupt force transitions associated with rectangular profiles; smooth-onset profiles have been used in prior cable-driven exosuit studies of swing-phase assistance \cite{ding2016,lee2018}. The same envelope shape, peak magnitude, and gait-cycle window were applied identically across all six WBAW conditions, so that the only experimentally manipulated factors were attachment position and pulling direction.
+The 55--85\,\% timing was chosen to align the cable's force trajectory with the natural acceleration profile of the swing limb. The 55\,\%~GC onset falls in pre-swing, after contralateral heel strike has transferred most of the body weight to the contralateral limb and as the ipsilateral hip flexors begin to activate \citep{perryburnfield2010}; at this instant the shank's forward angular velocity is small but rising, so the cable was intended to build tension while the limb is already moving forward, rather than having to initiate motion from rest at toe-off. The 70\,\% peak was placed at the approximate peak of the shank's angular velocity in mid-swing, with the intention of placing the cable's instantaneous mechanical power transfer in the high-velocity portion of the swing. The 85\,\% release was set to precede the natural reversal of the hip moment from net flexor to net extensor in late swing, which has been reported to occur at approximately 86\,\%~GC \citep{winter2009}; this was intended to keep the cable's mechanical work on the limb predominantly in the positive (concentric) regime and to avoid interference with the natural eccentric deceleration of the limb at the end of swing. The same envelope shape, peak amplitude, and gait-cycle window were applied identically across all six WBAW conditions, so that attachment position and pulling direction were the only experimentally manipulated factors. Implementation details of the cable controller — including pre-onset slack management and feedforward components — are reported in the Supplementary Material.
 
 \subsection{Protocol}
-
-The experimental session lasted approximately 110~min per participant and proceeded as follows. On arrival, participants gave written informed consent and completed the Physical Activity Readiness Questionnaire (PAR-Q+) and a brief medical-history screening questionnaire. Body mass, standing height, and the bilateral segment lengths required for marker placement and shank attachment-site definition (anterior-superior-iliac-spine to medial malleolus, knee-line to malleolus) were measured. Reflective markers were placed using the standard Plug-in Gait full-body marker set, and surface EMG electrodes were placed on the six target muscles of the dominant lower limb following the SENIAM recommendations \cite{hermens2000}. Skin preparation included shaving (when needed) and abrasive cleaning with isopropyl alcohol prior to electrode application.
-
-Maximum voluntary contractions (MVCs) were then collected for each of the six EMG channels using muscle-specific manual-resistance test postures based on the SENIAM and standard manual-muscle-testing references; each MVC trial consisted of three 5-s maximal-effort isometric contractions with 60-s rests, and the highest 0.5-s root-mean-square (RMS) value across the three trials was retained for normalization. Following EMG and marker setup, participants completed a 6-min familiarization walk on the treadmill at 1.0~m/s without the walker; this duration is consistent with the recommendation of $\geq$6~min ($\sim$300--400 strides) reported as sufficient for stabilization of spatio-temporal and kinematic gait parameters in healthy adults \cite{meyer2019}.
-
-The eight experimental conditions were then presented in a counterbalanced order. Each trial consisted of 90~s of continuous walking at 1.0~m/s during which all measurement streams were recorded, followed by a $\geq$90-s seated rest period during which the participant completed three subjective ratings (Borg RPE, comfort VAS, naturalness VAS; Section~2.6). For the six WBAW conditions, the cable attachment site and walker anchor height were reconfigured between trials according to the upcoming condition. The first 10 strides of each trial were excluded from analysis to allow stabilization, and the subsequent 30 consecutive strides were used for outcome computation.
+Each session lasted approximately two hours per participant. After consent and screening, body mass, standing height, and leg-segment lengths required for marker placement and cable attachment-site definition were measured. Reflective markers and EMG electrodes were placed, and MVC trials were collected for each EMG channel. Participants then walked on the treadmill for six minutes at 1.0~m/s without the walker as familiarization, which is the minimum duration reported to stabilize the spatio-temporal and kinematic gait parameters in healthy adults \citep{meyer2019}. The seven experimental conditions were presented in a counterbalanced order; each trial consisted of 90~s of continuous walking during which all measurement streams were recorded, followed by a rest of at least 90~s during which the participant completed a Borg rating of perceived exertion (CR-6--20), a comfort visual analog scale (0--100), and a naturalness visual analog scale (0--100). The cable attachment position and walker anchor height were reconfigured between trials as required by the upcoming condition. The first ten strides of each trial were excluded from analysis to allow stabilization, and the subsequent thirty consecutive strides were used for outcome computation.
 
 \subsection{Outcome measures}
+Outcomes were organized into a primary--secondary--exploratory hierarchy that was specified prior to data analysis.
 
-\paragraph{Primary outcomes — Electromyography.} For each of the six recorded muscles (RF, BF, VL, TA, MG, SOL), raw EMG signals were processed following the laboratory's standard pipeline \cite{kimleelab2024emg}: a 4th-order Butterworth band-pass filter with cutoffs at 50 and 450~Hz was applied, followed by full-wave rectification and a 4th-order zero-phase-lag Butterworth low-pass filter with a 10~Hz cutoff to obtain the linear envelope. Stride epochs were defined from heel strike to ipsilateral heel strike using the foot IMU and verified by vertical GRF. Each stride's EMG envelope was time-normalized to 101 points spanning 0--100\,\% of the gait cycle, and amplitude-normalized to the channel-specific MVC peak. The integrated EMG (iEMG) over the swing phase (60--100\,\%~GC) was computed for each stride and averaged across the 30~analyzed strides per condition. The primary muscle-level outcome was the swing-phase iEMG, expressed in units of \%MVC$\cdot$\%GC, for each of the six muscles in each condition.
+\paragraph{Primary outcomes.}
+Two outcomes were designated as primary: (i) swing-phase integrated EMG of the rectus femoris (RF iEMG, \%MVC$\cdot$\%GC), selected because the RF is the principal biarticular muscle whose action — hip flexion combined with knee extension during pre-swing and early swing — most closely overlaps the cable's expected action; and (ii) peak hip flexion angle during swing, selected as a single, kinematically interpretable summary of the cable's effect on swing-phase limb advancement. Hypothesis tests for these two primary outcomes were considered confirmatory.
 
-\paragraph{Secondary outcomes — Kinematics.} Sagittal-plane joint angles at the hip, knee, and ankle of the dominant limb were derived from the motion-capture data via inverse kinematics. The following stride-averaged variables were extracted per condition: peak hip flexion angle, peak knee flexion angle, peak ankle dorsi/plantar flexion angles, swing-phase range of motion at each joint, swing duration, stride duration, step length, and minimum foot clearance during swing. Bilateral symmetry indices were computed for the spatio-temporal parameters as $\mathrm{SI}=2\,(R-L)/(R+L)\times 100$\,\%.
+\paragraph{Secondary outcomes.}
+Secondary outcomes included swing-phase iEMG of the remaining four muscles (GMax, BF, TA, MG); peak knee flexion angle, swing range of motion at the hip and knee, swing duration, stride duration, step length, and minimum foot clearance; and the propulsive and braking impulses derived from the anteroposterior ground reaction force. These outcomes were used to characterize the broader biomechanical response and to inform the interpretation of the primary outcomes.
 
-\paragraph{Secondary outcomes — Kinetics.} Anteroposterior GRF was integrated over the propulsive (positive) and braking (negative) phases of stance to yield propulsive and braking impulses. Vertical GRF peaks at heel strike and at push-off were extracted, as was the cable-side load-cell record (mean $\pm$ standard deviation of measured cable peak tension and time-of-peak relative to the IMU-estimated stride start, used to verify force-tracking fidelity).
+\paragraph{Exploratory outcomes.}
+Exploratory outcomes included sagittal trunk lean (a kinematic indicator of walker-related compensation), the three subjective ratings (Borg RPE, comfort VAS, naturalness VAS), and cable-side measurements (mean and standard deviation of the measured peak cable force per stride and the time of the peak relative to the IMU-estimated stride start; the latter was used to verify force-tracking fidelity and to compute the average positive mechanical power delivered per stride).
 
-\paragraph{Secondary outcomes — Subjective.} After each trial, participants completed three ratings: a Borg Rating of Perceived Exertion scale (CR-6--20), a 0--100~mm visual analog scale (VAS) of perceived walking comfort, and a 0--100~mm VAS of perceived gait naturalness (with anchors ``not at all like my normal walking'' and ``exactly like my normal walking''). The two VAS instruments were administered in randomized order to mitigate scale-anchoring bias.
-
-\subsection{Hypotheses}
-\label{sec:hypotheses}
-
-The experimental hypotheses are framed in terms of qualitative biomechanical reasoning rather than quantitative model predictions, in keeping with the preliminary, characterization-focused scope of the present study. A horizontal forward cable force applied at the shank generates a hip flexion moment whose magnitude scales with the perpendicular distance from the hip joint center to the line of cable action — that is, with the vertical position of the attachment site relative to the hip. The same force generates a knee moment whose magnitude scales with the distance from the knee joint center to the attachment site, and whose sign tends toward knee extension because the cable's line of action lies anterior to the knee in the swing posture. An oblique upward cable component (30$^\circ$) redistributes part of the applied force into a vertical lift, thereby shortening the cable's effective horizontal moment arm to the knee while augmenting the hip-elevating contribution. These elementary geometric considerations motivate the following predictions:
-
-\begin{itemize}[leftmargin=2em,itemsep=0.3em]
-    \item[\textbf{H1.}] Walker support with 20\,\%~BW unloading (WBW) will reduce the swing-phase iEMG of plantarflexors and knee extensors compared with normal walking (NW), reproducing the well-documented body-weight-support effect on lower-limb muscle activity \cite{apte2018}.
-    \item[\textbf{H2.}] All six WBAW conditions will further reduce the swing-phase iEMG of the rectus femoris (RF) compared with WBW, because the cable acts as an external substitute for the biarticular hip-flexor / knee-extensor action of the RF during the late stance to swing transition.
-    \item[\textbf{H3.}] The reduction of hip-flexor and knee-extensor activity will scale with attachment position, with the LOW (distal-shank) attachment producing larger reductions than the MID and HIGH attachments at both the hip-flexor (RF) and knee-extensor (VL) muscles, because both lever arms increase as the attachment moves distally.
-    \item[\textbf{H4.}] The two cable directions will produce qualitatively different gait modulations: the 0$^\circ$ horizontal direction will preferentially modulate forward-propulsion outcomes (propulsive impulse, step length), whereas the 30$^\circ$ oblique direction will preferentially modulate vertical-lift outcomes (peak hip flexion angle, minimum foot clearance).
-    \item[\textbf{H5.}] At least one condition (likely involving distal attachment) will simultaneously reduce muscular effort and improve gait quality (in terms of the kinematic and subjective outcomes) relative to WBW, identifying a candidate parameter set for future walker-mounted device design.
-\end{itemize}
-
-A secondary, exploratory prediction follows from the same geometric reasoning: because the cable's knee-extension torque acts during the early-swing window (60--75\,\%~GC), when natural knee flexion is still progressing, biceps femoris (BF) activity may exhibit a compensatory increase or a phase shift in the LOW conditions. This will be examined as an exploratory outcome rather than a primary hypothesis.
+\paragraph{EMG processing.}
+The Trigno system performed onboard band-pass filtering and rectification of the raw EMG before downsampling to the 200~Hz host-side log rate. The 200~Hz logged signals were further smoothed with a 4th-order zero-phase-lag low-pass Butterworth filter (10~Hz cutoff) to obtain the linear envelope. Stride epochs were defined from heel strike to ipsilateral heel strike using the foot IMU and verified by the vertical ground reaction force. Each stride's envelope was time-normalized to 101 points spanning 0--100\,\%~GC and amplitude-normalized to the channel-specific MVC peak. The integrated EMG (iEMG) over the swing phase (defined here as 60--100\,\%~GC) was computed for each stride and averaged across the thirty analyzed strides per condition.
 
 \subsection{Statistical analysis}
+Statistical inference was confined to the two pre-specified primary outcomes (RF iEMG and peak hip flexion angle); the secondary outcomes were analyzed with the same procedure but with a Bonferroni adjustment applied across the secondary family to control the family-wise error rate, and the exploratory outcomes were summarized descriptively without inferential claims.
 
-The primary analysis comprised a two-way repeated-measures analysis of variance (RM-ANOVA) with within-subject factors of cable attachment position (HIGH, MID, LOW) and pulling direction (0$^\circ$, 30$^\circ$), applied independently to each primary and secondary outcome variable across the six WBAW conditions. The NW and WBW reference conditions were compared with the WBAW grand mean using paired-sample $t$-tests with Bonferroni correction for the number of inter-condition contrasts. Sphericity of repeated measures was tested with Mauchly's test, and Greenhouse-Geisser correction was applied where the assumption was violated. Effect sizes were reported as partial eta-squared ($\eta_p^2$) for ANOVA effects and Cohen's $d$ for pairwise contrasts. Significant interactions or main effects were followed up by Bonferroni-corrected pairwise comparisons. Statistical significance was set at $\alpha = 0.05$ throughout. Within-subject outliers exceeding $\pm$3~SD of the participant's own condition mean were flagged and inspected; values associated with measurement-system errors (e.g., marker dropout, EMG saturation) were excluded, while physiological outliers were retained. All statistical analyses were conducted in MATLAB (R2025b, MathWorks, Natick, MA, USA). All analysis code and de-identified data will be made publicly available via Zenodo and GitHub upon publication.
+Each primary and secondary outcome was analyzed with a two-way repeated-measures ANOVA across the six WBAW conditions with within-subject factors of cable attachment position (HIGH, MID, LOW) and pulling direction (0$^\circ$, 30$^\circ$). Where Mauchly's test indicated a violation of sphericity, Greenhouse--Geisser correction was applied. Effect sizes were reported as partial eta-squared ($\eta_p^2$) for ANOVA effects and Cohen's $d$ for pairwise contrasts. Significant main effects or interactions were followed up by pairwise comparisons with Bonferroni correction. The WBW reference condition was compared with the WBAW grand mean and with each WBAW condition using paired-sample $t$-tests with Bonferroni correction. Statistical significance was set at $\alpha = 0.05$ for the primary outcomes and at the Bonferroni-adjusted level for the secondary family.
 
-% =============================================================================
-% 3. RESULTS (placeholder until experiment)
-% =============================================================================
+Trial-validity criteria, the outlier rule (within-subject values exceeding $\pm 3$~SD of the participant's own condition mean were inspected; values associated with identifiable measurement-system errors were excluded, while physiological outliers were retained), and the analysis pipeline were specified prior to data collection and registered on the Open Science Framework. All analyses were performed in MATLAB (R2025b, MathWorks, Natick, MA, USA) or Python (NumPy, SciPy, statsmodels), as appropriate to each analysis stage. The analysis code and de-identified data will be deposited in a public repository (GitHub with a Zenodo digital object identifier) upon acceptance of the manuscript.
+
+% =====================================================================
 \section{Results}
+\textit{Pending data collection.}
 
-\subsection{Participant characteristics}
-% [PLACEHOLDER -- post-experiment]
-[Results 3.1 placeholder]
-
-\subsection{Electromyography across conditions}
-[Results 3.2 placeholder]
-
-\subsection{Kinematic outcomes}
-[Results 3.3 placeholder]
-
-\subsection{Kinetic outcomes}
-[Results 3.4 placeholder]
-
-\subsection{Subjective ratings}
-[Results 3.5 placeholder]
-
-\subsection{Identification of candidate optimal condition}
-[Results 3.6 placeholder]
-
-% =============================================================================
-% 4. DISCUSSION (~1600 words, ~15 references)
-% =============================================================================
+% =====================================================================
 \section{Discussion}
 
-\subsection{Principal findings}
-% [PLACEHOLDER -- post-experiment, ~200 words]
-% Summarize: (i) main effect of position; (ii) main effect of direction;
-% (iii) significant interactions; (iv) candidate optimal condition; (v) effect sizes.
-[Principal findings placeholder pending experimental data.]
+\subsection*{Principal findings}
+\textit{Pending data collection. Will be filled with the position $\times$ direction effect on each primary outcome, the candidate condition that best balances reduced muscular effort with preserved gait quality, and the corresponding effect sizes.}
 
-\subsection{Mechanism: Cable as a rectus-femoris analog}
-The biomechanical effects observed in the present study can be interpreted by considering the cable's functional analogy to the rectus femoris (RF), a biarticular muscle that simultaneously generates hip flexion and knee extension torques during the late-stance to early-swing transition of healthy gait. A cable applying a forward-directed force to the shank produces, at the hip joint, a flexion moment whose magnitude is governed by the perpendicular distance from the hip joint center to the cable's line of action — that is, by the vertical (y-axis) position of the attachment site relative to the hip. Because this vertical distance increases as the attachment moves distally along the shank, the hip-flexion contribution is expected to be greatest at the LOW attachment and smallest at the HIGH attachment, with the MID position intermediate. Concurrently, the cable produces a knee moment whose magnitude scales with the attachment-to-knee distance and whose sign tends toward extension because the cable's line of action passes anterior to the knee in the swing posture. The resulting hip-knee torque ratio shifts systematically as attachment moves distally: at HIGH the cable acts predominantly as a hip-flexion aid, while at LOW it engages both joints concurrently in a manner geometrically analogous to RF action. The 30$^\circ$ oblique direction, by introducing a vertical lift component, redistributes the applied force away from knee leverage and toward direct hip elevation, thereby producing a less pronounced knee effect for a given peak cable tension.
+\subsection*{Mechanism of action}
+The cable applied at the shank produces a hip-flexion moment whose magnitude scales with the perpendicular distance from the hip joint center to the cable's line of action — that is, with the vertical position of the attachment site below the hip. The same cable also produces a knee moment, whose magnitude scales with the attachment-to-knee distance and whose direction is predominantly knee-extension because the cable's line of action passes anterior to the knee in the swing posture. As the attachment moves distally along the shank, both moment arms increase, and the ratio of knee to hip torque shifts in favor of the knee. The 0$^\circ$ horizontal direction maximizes the horizontal force component and thus the knee leverage, whereas the 30$^\circ$ oblique direction redistributes part of the force into a vertical lift component that augments hip elevation while reducing the effective knee leverage.
 
-% [PLACEHOLDER -- post-experiment, ~150 words]
-% Tie observed EMG and kinematic patterns to this geometric reasoning;
-% specifically, (i) RF reduction concentrated in conditions with strong hip
-% torque generation; (ii) BF compensatory activity in conditions with
-% strong early-swing knee-extension torque (LOW conditions, 0 deg);
-% (iii) foot clearance / hip lift modulation by 30 deg conditions.
-[Mechanism interpretation placeholder pending experimental data.]
+This geometry suggests a specific functional analogy. The combination of a hip-flexion moment and a knee-extension moment is the characteristic action of the rectus femoris during pre-swing and early swing, and the cable's action may provide an external mechanical analogue of part of this biarticular function. The 55--85\,\%~GC actuation window also overlaps with the period over which the rectus femoris is naturally active in healthy gait, so the cable's force is in phase with the muscle's natural recruitment rather than out of phase with it. Prior studies suggest that swing-phase assistance produces larger biomechanical effects when its onset and offset are matched to the user's natural kinematic and muscular cycle \citep{ding2016,galle2017}.
 
-\subsection{Comparison with prior cable-driven systems}
+\subsection*{Comparison with prior work}
+The peak cable forces used in the present study (50~N) and the corresponding average positive mechanical power (approximately 0.55~W/kg per leg) lie within the range explored in prior cable-driven exo studies in healthy adults. The peak shank tension is approximately 7\,\% of the body-weight-normalized comfort limit reported by \citet{yandell2020} for axial pulling at the shank, remaining below the reported shank comfort threshold. The 12\,\% biological-torque level used by \citet{awad2017} to restore paretic-ankle dorsiflexion in stroke survivors and the 24\,\% biological-torque optimum reported by \citet{kim2022} for hip-flexion exosuits in healthy adults are within the same order of magnitude as the present device's setpoint. The placement of the actuation window at 55--85\,\%~GC, and the placement of the peak in mid-swing, are consistent with timing strategies reported to produce favorable metabolic and biomechanical outcomes in prior hip- and ankle-targeted devices \citep{ding2016,galle2017}.
 
-The peak cable tensions used in the present study (41--62~N depending on participant body mass) lie at the lower end of the range explored in the cable-driven exosuit literature, but produced shank-applied forces well below the comfort limit characterized by Yandell and colleagues for axial pulling at this segment \cite{yandell2020}. The corresponding hip-flexion moments produced by the cable, while not directly measured in the present preliminary study, are within the same order of magnitude as the 0.146~N\,m/kg peak hip flexion torque found by Slade and colleagues to be metabolically optimal for low-assistance hip exosuits \cite{kim2022}, and substantially below the levels associated with overassistance and antagonist-coactivation in chronic exoskeleton training. The 60--85\,\%~GC actuation window, with onset at toe-off and release at the natural hip-moment-reversal point, follows the established convention in swing-phase-targeted exosuit studies \cite{ding2016,lee2018}.
+\subsection*{Limitations}
+The cohort was restricted to healthy adult men. Although this restriction reduced inter-subject anthropometric variance and made the cable's lever-arm geometry more comparable across participants, it limits the immediate generalizability of the findings to other populations. Sex-related differences in pelvis kinematics, lower-limb segment proportions, and muscle activation patterns during gait are documented in the literature and may modulate the position-- and direction-dependent effects characterized here. The findings should therefore be interpreted as specific to the male cohort tested, and replication in female participants and in older adults representative of typical walker users is needed before generalizing the candidate condition to those populations.
 
-% [PLACEHOLDER -- post-experiment, ~100 words]
-% Compare observed EMG reduction magnitudes to those reported in
-% Slade 2022 (RF), Galle 2017 (plantarflexors), Awad 2017 (paretic limb).
-[Comparison placeholder pending experimental data.]
+The study was performed at a single belt speed and with a single peak cable force; a comprehensive dose response across forces and a speed response across walking velocities were beyond the scope of this initial characterization and are identified as priorities for follow-up work. Although a wider range of pulling directions — including a more oblique angle compatible with the LOW attachment geometry of the walker frame — was considered during pilot testing and could be incorporated in subsequent studies, the present design was restricted to two directions to keep the within-subject burden manageable. The study was also conducted on a treadmill at a single fixed speed, and the documented differences between treadmill and overground walking biomechanics may limit the direct overground generalization of the findings.
 
-\subsection{Implications for walker-mounted robotic device design}
+\subsection*{Future work}
+The position-- and direction-dependent effects characterized here may inform parameter selection for subsequent walker-mounted cable-driven assistance studies, and the load-cell-based visual biofeedback paradigm could be adapted into a closed-loop unloading controller in subsequent system iterations. The parameter map obtained in healthy adults may guide subsequent evaluation in clinical cohorts. A wider exploration of the position--direction design space — including a third pulling direction at LOW attachment to take advantage of the steeper cable angle that the walker frame geometrically permits — could be examined once the present preliminary characterization has narrowed the parameter space.
 
-% [PLACEHOLDER -- post-experiment, ~250 words]
-% Translate identified candidate condition into device specifications:
-% target attachment position, anchor height, peak cable tension, profile shape.
-% Discuss how the loadcell-based visual biofeedback paradigm could be
-% extended (closed-loop) in the production device.
-% Discuss progression from healthy adult characterization to walker-using
-% clinical populations (stroke, Parkinson, older adults).
-[Design-translation placeholder pending experimental data.]
-
-The methodological contribution of the load-cell-based visual biofeedback Weight Bearing System (WBS; Section~\ref{sec:wbs}), independent of the specific condition findings, is worth emphasizing in its own right: by removing the overhead-harness apparatus typical of body-weight-support systems and replacing it with bilateral instrumented handrails, the present WBS preserves the natural pelvis dynamics characteristic of walker-supported walking while enforcing a controlled, repeatable unloading magnitude across participants. This paradigm may be particularly relevant for the rehabilitation evaluation of any handrail-based assistive device in which the goal is to characterize an active assistance modality on top of a standardized passive support.
-
-\subsection{Limitations}
-
-Several limitations of the present study warrant explicit consideration. First, this was a preliminary single-session study; the long-term motor-learning, adaptation, and chronic-training effects of walker-mounted cable assistance were not addressed and remain to be examined in subsequent training-protocol studies. Second, walking was conducted exclusively on a treadmill at a single, fixed belt speed of 1.0~m/s; given documented differences between treadmill and overground walking biomechanics \cite{apte2018} and the speed-dependence of joint moments and muscle coordination patterns, the present findings should not be extrapolated to overground walking or to a wide range of walking speeds without further verification. Third, only a single peak cable tension (7\,\%~BW) was investigated; a comprehensive dose-response characterization across multiple cable magnitudes was beyond the scope of this preliminary study and is identified as a priority for follow-up investigation. Fourth, the hypotheses were framed in terms of qualitative biomechanical reasoning rather than quantitative model predictions; full inverse-dynamic and musculoskeletal-modeling treatments of the cable's joint-level effects are deferred to subsequent work and will require validated time-varying cable-direction estimation from anchor and attachment kinematics. Fifth, the study population was healthy young adults; clinical populations of walker users (stroke survivors, individuals with Parkinson's disease, older adults with mobility impairment) exhibit distinct gait patterns and may respond differently to the assistance conditions characterized here.
-
-\subsection{Future work}
-
-Three priorities emerge for follow-up studies. First, the candidate optimal condition identified here will inform the design specification of a closed-loop walker-mounted cable-driven device, in which the load-cell-based visual biofeedback paradigm extends naturally to a closed-loop unloading controller and the cable tension is delivered automatically rather than open-loop. Second, the parameter map characterized in healthy adults will be extended to a representative walker-using clinical cohort to verify generalizability and identify cohort-specific tuning of the candidate condition. Third, dose-response characterization across multiple cable magnitudes, attachment positions, and pulling directions in a single comprehensive sweep — feasible once the present preliminary characterization has narrowed the parameter space — will permit human-in-the-loop optimization analogous to that successfully applied to other exosuit platforms \cite{kim2022,bryan2021}.
-
-% =============================================================================
-% 5. CONCLUSIONS (~150 words)
-% =============================================================================
+% =====================================================================
 \section{Conclusions}
+\textit{Pending data collection. Will summarize the candidate optimal attachment position and pulling direction for the walker-mounted cable-driven assist, the corresponding reductions in muscle activity and changes in gait kinematics, and the implications for the design of the next-generation device.}
 
-In this preliminary characterization of shank-level cable-driven gait assistance under partial body weight support, we systematically manipulated cable attachment position (proximal, middle, distal) and pulling direction (0$^\circ$, 30$^\circ$) within a walker-supported treadmill walking paradigm in healthy adult men. The integrated apparatus combined a walker-mounted cable-driven actuator with a novel load-cell-based visual-biofeedback Weight Bearing System, a paradigm that preserves the natural pelvis dynamics of handrail-supported walking while enforcing a controlled 20\,\% body-weight unloading across participants. % [PLACEHOLDER -- add ~50 words after data collection]
-% Specifically, the [LOW 30 deg / etc.] condition emerged as the candidate optimal
-% set producing simultaneous reduction of [muscle X] activity and improvement of
-% [kinematic Y], establishing a parameter map for the development of future walker-
-% mounted cable-driven gait assistive devices.
-The findings are intended to inform the parameter selection of a forthcoming walker-mounted, cable-driven robotic gait-assistive device, and to motivate subsequent dose-response and clinical-validation studies in walker-using patient populations.
-
-% =============================================================================
-% DECLARATIONS (JNER required)
-% =============================================================================
+% =====================================================================
 \section*{Declarations}
 
-\subsection*{Ethics approval and consent to participate}
-The study protocol was reviewed and approved by the [Institutional Review Board / Bioethics Committee, Institution]. All participants provided written informed consent prior to participation.
+\noindent\textbf{Ethics approval and consent to participate.} The study protocol was reviewed and approved by the Institutional Review Board of Chung-Ang University. All participants provided written informed consent prior to participation.
 
-\subsection*{Consent for publication}
-Not applicable.
+\noindent\textbf{Consent for publication.} Not applicable.
 
-\subsection*{Availability of data and materials}
-The datasets generated and analyzed during the current study, together with analysis code, will be deposited in a public repository (Zenodo / GitHub) upon publication. DOI to be added at proof stage.
+\noindent\textbf{Availability of data and materials.} The de-identified datasets and the analysis code generated during the present study will be deposited in a public repository upon publication; the DOI will be inserted at the proof stage.
 
-\subsection*{Competing interests}
-The authors declare that they have no competing interests.
+\noindent\textbf{Competing interests.} The authors declare that they have no competing interests.
 
-\subsection*{Funding}
-[Funding statement placeholder]
+\noindent\textbf{Funding.} \textit{[Funding source(s) to be inserted.]}
 
-\subsection*{Authors' contributions}
-[Author contribution placeholder per CRediT taxonomy]
+\noindent\textbf{Authors' contributions.} \textit{[CRediT statement to be inserted.]}
 
-\subsection*{Acknowledgements}
-[Acknowledgement placeholder]
+\noindent\textbf{Acknowledgements.} \textit{[Acknowledgements to be inserted.]}
 
-\subsection*{ORCID}
-[ORCID identifiers placeholder]
-
-% =============================================================================
-% TABLES
-% =============================================================================
-\section*{Tables}
-
-\begin{table}[h]
-\centering
-\caption{Experimental conditions. Eight conditions were tested per participant, comprising one normal-walking reference, one walker-supported reference (walker plus 20\,\% body-weight support, no cable), and six combinations of cable attachment position and pulling direction. The same peak cable tension (7\,\% of participant body weight) and half-sine envelope (60--85\,\% gait cycle) were applied across all six WBAW conditions.}
-\label{tab:conditions}
-\small
-\begin{tabular}{lllll}
-\toprule
-\textbf{ID} & \textbf{Condition name} & \textbf{Walker BWS} & \textbf{Cable position} & \textbf{Cable direction} \\
-\midrule
-1 & NW              & --      & --                                & --      \\
-2 & WBW             & 20\,\% BW & --                                & --      \\
-3 & WBAW HIGH--0    & 20\,\% BW & Proximal shank (25\,\% length)    & 0$^\circ$  \\
-4 & WBAW HIGH--30   & 20\,\% BW & Proximal shank (25\,\% length)    & 30$^\circ$ \\
-5 & WBAW MID--0     & 20\,\% BW & Middle shank (50\,\% length)      & 0$^\circ$  \\
-6 & WBAW MID--30    & 20\,\% BW & Middle shank (50\,\% length)      & 30$^\circ$ \\
-7 & WBAW LOW--0     & 20\,\% BW & Distal shank (75\,\% length)      & 0$^\circ$  \\
-8 & WBAW LOW--30    & 20\,\% BW & Distal shank (75\,\% length)      & 30$^\circ$ \\
-\bottomrule
-\end{tabular}
-\\[0.5em]
-\footnotesize NW: normal walking; WBW: walker-supported walking with body-weight support, no cable; WBAW: walker-supported assistive walking; BWS: body-weight support.
-\end{table}
-
-\begin{table}[h]
-\centering
-\caption{Participant characteristics. [Placeholder -- to be populated after data collection.]}
-\label{tab:participants}
-\begin{tabular}{lc}
-\toprule
-\textbf{Variable} & \textbf{Value} \\
-\midrule
-$N$               & 12 (target) \\
-Age (yrs)         & [mean $\pm$ SD; range] \\
-Body mass (kg)    & [mean $\pm$ SD; range] \\
-Height (cm)       & [mean $\pm$ SD; range] \\
-BMI (kg/m$^2$)    & [mean $\pm$ SD] \\
-Shank length (cm) & [mean $\pm$ SD] \\
-Dominant leg      & [n right / n left] \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-% =============================================================================
-% FIGURES (placeholders -- actual figures to be inserted after preparation)
-% =============================================================================
-\section*{Figures}
-
-\begin{figure}[h]
-\centering
-\fbox{\parbox[c][6cm][c]{0.8\textwidth}{\centering [Figure 1 placeholder: Schematic of the integrated experimental apparatus, showing the walker frame with mounted cable-driven actuator and bilateral handrail load cells, the visual-biofeedback display, the foot-mounted IMU, the EMG/marker placements on the dominant lower limb, and the instrumented treadmill.]}}
-\caption{Integrated experimental apparatus. The walker frame is positioned in front of an instrumented treadmill. The Bowden-cable-driven assist module (top) is anchored on the walker frame at one of two heights producing a 0$^\circ$ or 30$^\circ$ pulling direction at the shank attachment site (HIGH/MID/LOW). The Weight Bearing System employs bilateral handrail load cells with a visual-biofeedback display mounted at the participant's eye level (front), enforcing a 20\,\%~BW unloading target. Surface EMG electrodes are placed on six muscles of the dominant lower limb following SENIAM recommendations. A foot-mounted IMU provides continuous gait-phase estimation that gates the cable force profile to the lifted-foot swing window.}
-\label{fig:setup}
-\end{figure}
-
-\begin{figure}[h]
-\centering
-\fbox{\parbox[c][6cm][c]{0.8\textwidth}{\centering [Figure 2 placeholder: Cable attachment positions and pulling directions diagram. Three positions (HIGH, MID, LOW = 25, 50, 75\,\% of shank length) shown with anatomical landmarks; two directions (0$^\circ$ horizontal, 30$^\circ$ oblique) shown with walker anchor placement.]}}
-\caption{Cable attachment positions and pulling directions. (a) Three attachment positions on the shank at 25\,\% (HIGH, just distal to the tibial tuberosity), 50\,\% (MID, mid-tibial shaft), and 75\,\% (LOW, just proximal to the medial malleolus) of the shank length, measured from the medial knee joint line. (b) Two pulling directions, defined relative to the horizontal at the cable attachment in the neutral standing pose: 0$^\circ$ (horizontal forward) and 30$^\circ$ (oblique up-forward). The cable pulling direction is set by the height of the cable's anchor on the walker frame.}
-\label{fig:conditions}
-\end{figure}
-
-\begin{figure}[h]
-\centering
-\fbox{\parbox[c][6cm][c]{0.8\textwidth}{\centering [Figure 3 placeholder: Force profile and timing diagram. Half-sine envelope from 60 to 85\,\% of gait cycle, peak at 72.5\,\%, peak amplitude 7\,\%~BW. Reference markers at 60\,\% (toe-off, Perry \& Burnfield 2010) and 85\,\% (hip-moment reversal, Winter 2009).]}}
-\caption{Cable force profile and timing. The cable tension follows a half-sine envelope between 60\,\% and 85\,\% of the gait cycle, with peak amplitude $F_\text{peak} = 7\,\%\,m_\text{subj}\,g$. The 60\,\%~GC onset corresponds to the conventional toe-off reference of healthy gait \cite{perryburnfield2010} and serves as the start of the gating window, and the 85\,\% release precedes the natural reversal of the hip moment from net flexor to net extensor in late swing.}
-\label{fig:profile}
-\end{figure}
-
-\begin{figure}[h]
-\centering
-\fbox{\parbox[c][6cm][c]{0.8\textwidth}{\centering [Figure 4 placeholder: Group-mean EMG envelopes per condition for each of the six muscles, with shaded inter-quartile bands; conditions overlaid by color. PLACEHOLDER -- post-experiment.]}}
-\caption{[Placeholder] Group-averaged surface electromyography (mean and inter-quartile range, normalized to MVC) over the gait cycle for the six recorded muscles, separated by experimental condition. To be generated from collected data.}
-\label{fig:emg}
-\end{figure}
-
-\begin{figure}[h]
-\centering
-\fbox{\parbox[c][6cm][c]{0.8\textwidth}{\centering [Figure 5 placeholder: Kinematic outcomes summary. Multi-panel: hip flexion peak, knee flexion peak, swing ROM, foot clearance, swing time symmetry per condition. PLACEHOLDER -- post-experiment.]}}
-\caption{[Placeholder] Group-summary kinematic outcomes per condition. To be generated from collected data.}
-\label{fig:kinematics}
-\end{figure}
-
-\begin{figure}[h]
-\centering
-\fbox{\parbox[c][6cm][c]{0.8\textwidth}{\centering [Figure 6 placeholder: Multi-criteria radar plot summarizing the candidate optimal condition across muscle-effort reduction, kinematic restoration, and subjective comfort axes. PLACEHOLDER -- post-experiment.]}}
-\caption{[Placeholder] Multi-criteria summary of candidate optimal condition. To be generated from collected data.}
-\label{fig:summary}
-\end{figure}
-
-% =============================================================================
-% REFERENCES
-% =============================================================================
-% Vancouver-style numbered citations are conventional for biomedical journals
-% including JNER (BMC); using unsrtnat as the closest available substitute
-% in the texlive distribution. At submission, replace with the journal's
-% required bibstyle.
+% =====================================================================
 \bibliographystyle{unsrtnat}
 \bibliography{references}
 

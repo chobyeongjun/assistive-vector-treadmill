@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QComboBox,
     QDoubleSpinBox, QFrame, QTextEdit,
-    QStackedWidget, QRadioButton
+    QStackedWidget, QRadioButton, QLineEdit
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
@@ -126,6 +126,8 @@ class ControlPanel(QWidget):
     """
 
     command_requested = pyqtSignal(str)
+    logging_start_requested = pyqtSignal(str)
+    logging_stop_requested = pyqtSignal()
     mode_changed = pyqtSignal(int)
     scan_requested = pyqtSignal()
     connect_requested = pyqtSignal(int)
@@ -137,6 +139,7 @@ class ControlPanel(QWidget):
         super().__init__(parent)
         self.setFixedWidth(self.PANEL_WIDTH)
         self.setObjectName("SidebarInner")
+        self._is_logging = False
         self._init_ui()
 
     def _init_ui(self):
@@ -146,6 +149,9 @@ class ControlPanel(QWidget):
 
         # === BLE Connection ===
         layout.addWidget(self._create_ble_card())
+
+        # === Logging (RealtimeMode 상단 바에 배치됨) ===
+        self.log_card = self._create_log_card()
 
         # === Control ===
         layout.addWidget(self._create_control_card())
@@ -163,9 +169,6 @@ class ControlPanel(QWidget):
         layout.addWidget(self._create_preset_card())
 
         layout.addStretch()
-
-        # === Log (bottom, fixed height) ===
-        layout.addWidget(self._create_log_card())
 
     # ------ BLE Card ------
     def _create_ble_card(self) -> QFrame:
@@ -230,10 +233,11 @@ class ControlPanel(QWidget):
         cl.addLayout(mr)
         self._force_radio.toggled.connect(self._on_mode_toggled)
 
-        # Enable / Disable
+        # Enable / Disable — Enable은 로깅 중일 때만 활성
         br = QHBoxLayout()
         self.enable_btn = QPushButton("Enable")
         self.enable_btn.setObjectName("GreenBtn")
+        self.enable_btn.setEnabled(False)
         self.enable_btn.clicked.connect(lambda: self.command_requested.emit("e"))
         br.addWidget(self.enable_btn)
 
@@ -273,10 +277,10 @@ class ControlPanel(QWidget):
         cl.addWidget(_section_label("Force Parameters"))
 
         params = [
-            ("Onset GCP", "onset_spin", 40, "%", "gs", 100),
-            ("Peak GCP", "peak_gcp_spin", 60, "%", "gp", 100),
-            ("Release GCP", "release_spin", 70, "%", "ge", 100),
-            ("Peak Force", "peak_force_spin", 40, " N", "pf", 1),
+            ("Onset GCP", "onset_spin", 55, "%", "gs", 100),
+            ("Peak GCP", "peak_gcp_spin", 70, "%", "gp", 100),
+            ("Release GCP", "release_spin", 85, "%", "ge", 100),
+            ("Peak Force", "peak_force_spin", 50, " N", "pf", 1),
         ]
 
         for label_text, attr_name, default, suffix, cmd_prefix, divisor in params:
@@ -384,9 +388,9 @@ class ControlPanel(QWidget):
         cl.addWidget(_section_label("Feedforward"))
 
         ff_params = [
-            ("TM Speed", "tff_speed_spin", 125, " cm/s", "tm", 100),
-            ("TFF Gain", "tff_gain_spin", 80, " %", "tg", 100),
-            ("Motion FF", "motion_ff_spin", 70, " %", "fm", 100),
+            ("TM Speed", "tff_speed_spin", 100, " cm/s", "tm", 100),
+            ("TFF Gain", "tff_gain_spin", 55, " %", "tg", 100),
+            ("Motion FF", "motion_ff_spin", 20, " %", "fm", 100),
             ("Force FF", "force_ff_spin", 15, " %", "ff", 100),
         ]
 
@@ -419,6 +423,11 @@ class ControlPanel(QWidget):
             row.addWidget(btn)
             cl.addLayout(row)
 
+        apply_all_btn = QPushButton("Apply All FF")
+        apply_all_btn.setObjectName("AccentBtn")
+        apply_all_btn.clicked.connect(self._send_all_ff_params)
+        cl.addWidget(apply_all_btn)
+
         return card
 
     # ------ Experiment Preset Card ------
@@ -435,6 +444,7 @@ class ControlPanel(QWidget):
             ("High 30°", 1), ("High 0°", 2),
             ("Mid  30°", 3), ("Mid  0°", 4),
             ("Low  30°", 5), ("Low  0°", 6),
+            ("Low  45°", 7),
         ]
 
         grid = QGridLayout()
@@ -452,78 +462,126 @@ class ControlPanel(QWidget):
     # ------ Log Card ------
     def _create_log_card(self) -> QFrame:
         card = _glass_card()
-        card.setFixedHeight(200)
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(10, 10, 10, 10)
+        cl.setContentsMargins(12, 10, 12, 10)
         cl.setSpacing(6)
 
         cl.addWidget(_section_label("Logging"))
 
-        # 상태 표시
-        status_row = QHBoxLayout()
-        self._log_dot = QLabel("●")
-        self._log_dot.setFixedWidth(16)
-        self._log_status_label = QLabel("STOPPED")
-        self._log_status_label.setStyleSheet(
-            f"font-size:11px; font-weight:700; color:{C['muted']}; background:transparent; border:none;"
-        )
-        self._set_logging_indicator(False)
-        status_row.addWidget(self._log_dot)
-        status_row.addWidget(self._log_status_label)
-        status_row.addStretch()
-        cl.addLayout(status_row)
+        # 가로 분할: 왼쪽=log_text, 오른쪽=이름+버튼
+        content_row = QHBoxLayout()
+        content_row.setSpacing(8)
+        content_row.setContentsMargins(0, 0, 0, 0)
 
-        # 시작 / 중지 버튼
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(6)
-
-        self._log_start_btn = QPushButton("▶  시작")
-        self._log_start_btn.setObjectName("GreenBtn")
-        self._log_start_btn.clicked.connect(self._logging_start)
-
-        self._log_stop_btn = QPushButton("■  중지")
-        self._log_stop_btn.setObjectName("RedBtn")
-        self._log_stop_btn.clicked.connect(self._logging_stop)
-
-        btn_row.addWidget(self._log_start_btn)
-        btn_row.addWidget(self._log_stop_btn)
-        cl.addLayout(btn_row)
-
-        # 로그 텍스트
+        # 왼쪽: log_text
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setObjectName("LogText")
-        cl.addWidget(self.log_text)
+        self.log_text.setFixedWidth(140)
+        self.log_text.setFixedHeight(72)
+        content_row.addWidget(self.log_text)
+
+        # 오른쪽: 이름 입력 + 버튼+상태
+        right_col = QVBoxLayout()
+        right_col.setSpacing(5)
+        right_col.setContentsMargins(0, 0, 0, 0)
+
+        self._log_name_edit = QLineEdit()
+        self._log_name_edit.setPlaceholderText("실험 이름...")
+        self._log_name_edit.setFixedHeight(30)
+        self._log_name_edit.setStyleSheet(
+            f"background:{C.get('card','#1e1e2e')}; color:white; "
+            f"border:1px solid {C['border']}; border-radius:4px; padding:0 6px; font-size:11px;"
+        )
+        right_col.addWidget(self._log_name_edit)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(5)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+
+        self._log_start_btn = QPushButton("▶ START")
+        self._log_start_btn.setFixedHeight(32)
+        self._log_start_btn.setStyleSheet(
+            "QPushButton { background:rgba(74,222,128,0.18); color:#4ade80; "
+            "border:1px solid rgba(74,222,128,0.5); border-radius:5px; "
+            "padding:0 10px; font-size:11px; font-weight:700; }"
+            "QPushButton:hover { background:rgba(74,222,128,0.32); }"
+            "QPushButton:disabled { color:rgba(74,222,128,0.28); "
+            "border-color:rgba(74,222,128,0.15); background:rgba(74,222,128,0.05); }"
+        )
+        self._log_start_btn.setEnabled(True)
+        self._log_start_btn.clicked.connect(self._logging_start)
+        btn_row.addWidget(self._log_start_btn, 1)
+
+        self._log_stop_btn = QPushButton("■ STOP")
+        self._log_stop_btn.setFixedHeight(32)
+        self._log_stop_btn.setStyleSheet(
+            "QPushButton { background:rgba(248,113,113,0.18); color:#f87171; "
+            "border:1px solid rgba(248,113,113,0.5); border-radius:5px; "
+            "padding:0 10px; font-size:11px; font-weight:700; }"
+            "QPushButton:hover { background:rgba(248,113,113,0.32); }"
+            "QPushButton:disabled { color:rgba(248,113,113,0.28); "
+            "border-color:rgba(248,113,113,0.15); background:rgba(248,113,113,0.05); }"
+        )
+        self._log_stop_btn.setEnabled(False)
+        self._log_stop_btn.clicked.connect(self._logging_stop)
+        btn_row.addWidget(self._log_stop_btn, 1)
+
+        self._log_dot = QLabel("●")
+        self._log_dot.setFixedWidth(14)
+        self._log_status_label = QLabel("STOP")
+        self._set_logging_indicator(False)
+        btn_row.addWidget(self._log_dot)
+        btn_row.addWidget(self._log_status_label)
+
+        right_col.addLayout(btn_row)
+        content_row.addLayout(right_col)
+        cl.addLayout(content_row)
 
         return card
 
+    def _update_log_btn_states(self):
+        """START: 로깅 중 아닐 때만. STOP: 로깅 중일 때만."""
+        self._log_start_btn.setEnabled(not self._is_logging)
+        self._log_stop_btn.setEnabled(self._is_logging)
+
     def _set_logging_indicator(self, is_logging: bool):
+        was_logging = self._is_logging
+        self._is_logging = is_logging
         if is_logging:
             self._log_dot.setStyleSheet(
                 "color:#4CAF50; font-size:14px; background:transparent; border:none;"
             )
-            self._log_status_label.setText("RECORDING")
+            self._log_status_label.setText("REC")
             self._log_status_label.setStyleSheet(
-                "font-size:11px; font-weight:700; color:#4CAF50; background:transparent; border:none;"
+                "font-size:10px; font-weight:700; color:#4CAF50; background:transparent; border:none;"
             )
         else:
             self._log_dot.setStyleSheet(
                 f"color:{C['muted']}; font-size:14px; background:transparent; border:none;"
             )
-            self._log_status_label.setText("STOPPED")
+            self._log_status_label.setText("STOP")
             self._log_status_label.setStyleSheet(
-                f"font-size:11px; font-weight:700; color:{C['muted']}; background:transparent; border:none;"
+                f"font-size:10px; font-weight:700; color:{C['muted']}; background:transparent; border:none;"
             )
+        # START↔STOP 버튼 상태
+        self._log_start_btn.setEnabled(not is_logging)
+        self._log_stop_btn.setEnabled(is_logging)
+        # Enable 버튼은 로깅 중일 때만 허용 (enable_btn이 아직 생성 안 됐을 수 있음)
+        if hasattr(self, 'enable_btn'):
+            self.enable_btn.setEnabled(is_logging)
 
     def _logging_start(self):
-        self.command_requested.emit("s")          # Treadmill_main 로깅 시작
-        self.command_requested.emit("log")        # Loadcell_Monitor 로깅 시작
+        name = self._log_name_edit.text().strip()
+        self.logging_start_requested.emit(name)
         self._set_logging_indicator(True)
+        self.log_text.append(f"▶ START: {name if name else '(auto)'}")
 
     def _logging_stop(self):
-        self.command_requested.emit("stop_log")   # Treadmill_main 로깅 중지
-        self.command_requested.emit("logstop")    # Loadcell_Monitor 로깅 중지
+        self.logging_stop_requested.emit()
         self._set_logging_indicator(False)
+        self.command_requested.emit("d")
+        self.log_text.append("■ STOP → 모터 비활성화")
 
     def set_logging_status(self, is_logging: bool):
         """외부에서 로깅 상태 업데이트 (BLE 수신 등)"""
@@ -564,37 +622,52 @@ class ControlPanel(QWidget):
         self._send_param("pe", self.pos_end_spin.value() / 100)
         self._send_param("pa", self.amplitude_spin.value())
 
+    # Preset table: belt(cm/s), TFF(%), MotionFF(%), ActuatorFF(%)
+    _PRESET_FF = {
+        1: {"name": "High-30°", "belt": 100, "tff": 55, "motion": 35, "actuator": 15},
+        2: {"name": "High-0°",  "belt": 100, "tff": 60, "motion": 35, "actuator": 15},
+        3: {"name": "Mid-30°",  "belt": 100, "tff": 60, "motion": 35, "actuator": 15},
+        4: {"name": "Mid-0°",   "belt": 100, "tff": 60, "motion": 35, "actuator": 15},
+        5: {"name": "Low-30°",  "belt": 100, "tff": 50, "motion": 30, "actuator": 15},
+        # Low-30° 60cm/s 변형: belt 수동 조절 (preset 5 → belt=60)
+        6: {"name": "Low-0°",   "belt": 100, "tff": 50, "motion": 40, "actuator": 15},
+        7: {"name": "Low-45°",  "belt": 100, "tff": 45, "motion": 40, "actuator": 15},
+    }
+
     def _apply_preset(self, n: int):
-        """Send preset command to Teensy AND update all GUI spinners."""
-        names = {1: "High-30°", 2: "High-0°", 3: "Mid-30°",
-                 4: "Mid-0°",   5: "Low-30°", 6: "Low-0°"}
+        """Send preset command to Teensy AND update all GUI spinners per condition."""
+        p = self._PRESET_FF.get(n)
+        if p is None:
+            return
 
-        # Shared preset values
-        onset_pct   = 60    # %
-        peak_pct    = 72    # %
-        release_pct = 85    # %
-        peak_force  = 50    # N
-        act_ff_pct  = 15    # % (→ 0.15)
-        tff_pct     = 55    # % (→ 0.55)
-        mot_ff_pct  = 50    # % (→ 0.50)
-        belt_cms    = 100   # cm/s (→ 1.0 m/s)
+        # 1) Update Force param spinners (공통)
+        self.onset_spin.setValue(55)
+        self.peak_gcp_spin.setValue(70)
+        self.release_spin.setValue(85)
+        self.peak_force_spin.setValue(50)
 
-        # 1) Send single preset command to Teensy
+        # 2) Update FF spinners (조건별)
+        self.tff_speed_spin.setValue(p["belt"])
+        self.tff_gain_spin.setValue(p["tff"])
+        self.motion_ff_spin.setValue(p["motion"])
+        self.force_ff_spin.setValue(p["actuator"])
+
+        # 3) Send preset command to Teensy (force params + FF 모두 설정)
         self.command_requested.emit(f"preset{n}")
 
-        # 2) Update Force param spinners
-        self.onset_spin.setValue(onset_pct)
-        self.peak_gcp_spin.setValue(peak_pct)
-        self.release_spin.setValue(release_pct)
-        self.peak_force_spin.setValue(peak_force)
+        self.log(f"[OK] Preset {n} ({p['name']}) "
+                 f"TFF={p['tff']}% MotFF={p['motion']}% ActFF={p['actuator']}%")
 
-        # 3) Update Feedforward spinners
-        self.force_ff_spin.setValue(act_ff_pct)
-        self.tff_gain_spin.setValue(tff_pct)
-        self.motion_ff_spin.setValue(mot_ff_pct)
-        self.tff_speed_spin.setValue(belt_cms)
-
-        self.log(f"[OK] Preset {n} ({names.get(n, '')}) loaded")
+    def _send_all_ff_params(self):
+        """현재 FF 슬라이더 값 전체를 BLE로 일괄 전송."""
+        self._send_param("tm", self.tff_speed_spin.value() / 100)
+        self._send_param("tg", self.tff_gain_spin.value() / 100)
+        self._send_param("fm", self.motion_ff_spin.value() / 100)
+        self._send_param("ff", self.force_ff_spin.value() / 100)
+        self.log(f"[OK] Apply All FF: TM={self.tff_speed_spin.value()}cm/s "
+                 f"TFF={self.tff_gain_spin.value()}% "
+                 f"MotFF={self.motion_ff_spin.value()}% "
+                 f"ActFF={self.force_ff_spin.value()}%")
 
     # === Public Methods (preserved) ===
 

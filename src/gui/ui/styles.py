@@ -136,6 +136,11 @@ def get_stylesheet() -> str:
         #GreenBtn:pressed {{
             background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #15803D,stop:1 #166534);
         }}
+        #GreenBtn:disabled {{
+            background:rgba(34,197,94,0.07);
+            color:rgba(74,222,128,0.28);
+            border:1px solid rgba(74,222,128,0.15);
+        }}
         #RedBtn {{
             background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #EF4444,stop:0.5 #DC2626,stop:1 #B91C1C);
             color:white; border:none; border-radius:6px; padding:7px 12px; font-weight:600;

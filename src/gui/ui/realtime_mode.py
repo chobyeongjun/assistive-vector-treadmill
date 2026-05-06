@@ -8,7 +8,7 @@ BLE 실시간 모니터링 모드
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
-    QLineEdit, QPushButton, QScrollArea
+    QScrollArea
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 
@@ -48,45 +48,19 @@ class RealtimeMode(QWidget):
         # Top bar: SD Log + Status + GCP circles (vertically centered)
         top = QFrame()
         top.setObjectName("GlassCard")
-        top.setFixedHeight(96)
         top_layout = QHBoxLayout(top)
         top_layout.setContentsMargins(14, 8, 14, 8)
         top_layout.setSpacing(0)
 
-        # SD Log section (fixed width, centered)
-        sd_frame = QWidget()
-        sd_frame.setFixedWidth(230)
-        sd_section = QVBoxLayout(sd_frame)
-        sd_section.setSpacing(4)
-        sd_section.setContentsMargins(0, 0, 0, 0)
-        sd_section.setAlignment(Qt.AlignVCenter)
+        top_layout.addStretch(1)
 
-        sd_label = QLabel("SD LOG")
-        sd_label.setStyleSheet(
-            f"color:{C['muted']}; font-size:9px; font-weight:700; "
-            f"letter-spacing:1px; background:transparent; border:none;"
-        )
-        sd_section.addWidget(sd_label)
+        # Logging card (from ControlPanel) — 이름 입력 + START/STOP + log_text
+        log_card = self._control_panel.log_card
+        log_card.setFixedWidth(400)
+        log_card.setStyleSheet("background:transparent; border:none;")
+        top_layout.addWidget(log_card, alignment=Qt.AlignVCenter)
 
-        file_row = QHBoxLayout()
-        file_row.setSpacing(4)
-        self._filename_input = QLineEdit()
-        self._filename_input.setPlaceholderText("AK60_GCP_00")
-        self._filename_input.setFixedWidth(150)
-        self._filename_input.setFixedHeight(28)
-        self._filename_input.setMaxLength(20)
-        file_row.addWidget(self._filename_input)
-
-        self._save_btn = QPushButton("Start")
-        self._save_btn.setObjectName("AccentBtn")
-        self._save_btn.setFixedWidth(60)
-        self._save_btn.setFixedHeight(28)
-        self._save_btn.clicked.connect(self._on_save_clicked)
-        file_row.addWidget(self._save_btn)
-        file_row.addStretch()
-
-        sd_section.addLayout(file_row)
-        top_layout.addWidget(sd_frame)
+        top_layout.addStretch(1)
 
         # Separator
         sep = QFrame()
@@ -94,9 +68,9 @@ class RealtimeMode(QWidget):
         sep.setFixedHeight(50)
         sep.setStyleSheet("background:rgba(255,255,255,0.06);")
         top_layout.addWidget(sep)
-        top_layout.addSpacing(14)
+        top_layout.addSpacing(16)
 
-        # STATUS section (centered)
+        # STATUS section — GCP 바로 왼쪽
         status_frame = QWidget()
         status_section = QVBoxLayout(status_frame)
         status_section.setSpacing(4)
@@ -126,9 +100,9 @@ class RealtimeMode(QWidget):
             status_row.addWidget(lbl)
 
         status_section.addLayout(status_row)
-        top_layout.addWidget(status_frame)
+        top_layout.addWidget(status_frame, alignment=Qt.AlignVCenter)
 
-        top_layout.addStretch()
+        top_layout.addSpacing(20)
 
         # GCP Circles (vertically centered)
         self._gcp_left = GCPIndicator("L_GCP", C['blue'])
@@ -146,12 +120,6 @@ class RealtimeMode(QWidget):
 
         # Connect GCP updates from plot_widget
         self._plot_widget.set_gcp_callback(self._update_gcp)
-
-    def _on_save_clicked(self):
-        """Save button -> emit through plot_widget's save_requested signal"""
-        filename = self._filename_input.text().strip()
-        self._plot_widget.save_requested.emit(filename)
-        self._filename_input.clear()
 
     def _update_gcp(self, l_gcp: float, r_gcp: float):
         """Update GCP circular gauges"""

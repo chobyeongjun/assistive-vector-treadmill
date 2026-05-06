@@ -12,6 +12,7 @@ BLE 핵심 설계 (절대 변경 금지):
 
 import sys
 import os
+import time
 from collections import deque
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QFrame, QStatusBar, QApplication
@@ -40,8 +41,8 @@ class MainWindow(QMainWindow):
     - 데이터 처리: 타이머 콜백에서 큐 비우면서 처리 (throttled)
     """
 
-    DATA_PROCESS_INTERVAL_MS = 10  # 10ms = 100Hz 데이터 처리 (렌더링 없음)
-    PLOT_UPDATE_INTERVAL_MS = 100  # 100ms = 10Hz 렌더링 (데이터 처리와 분리)
+    DATA_PROCESS_INTERVAL_MS = 50   # 50ms = 20Hz 데이터 처리
+    PLOT_UPDATE_INTERVAL_MS = 100  # 100ms = 10Hz 렌더링
 
     def __init__(self):
         super().__init__()
@@ -56,6 +57,9 @@ class MainWindow(QMainWindow):
         # 디버그용 변수
         self._last_sample_count = 0
         self._data_rate = 0.0
+        self._connected_device_kind = None
+        self._pending_device_kind = None
+        self._last_diag_log = 0.0
 
         # 컴포넌트 초기화
         self._ble_client = BleClientThread()
@@ -70,6 +74,11 @@ class MainWindow(QMainWindow):
 
         # 렌더링 대기 플래그
         self._has_new_data = False
+
+        # 연결 끊김 후 플롯 자동 클리어 타이머 (3초 — 재연결 대기 시간 고려)
+        self._disconnect_clear_timer = QTimer()
+        self._disconnect_clear_timer.setSingleShot(True)
+        self._disconnect_clear_timer.timeout.connect(self._clear_plot_if_disconnected)
 
         # BLE 스레드 시작
         self._ble_client.start()
@@ -173,6 +182,7 @@ class MainWindow(QMainWindow):
         self._ble_client.signals.disconnected.connect(self._on_disconnected, Qt.QueuedConnection)
         self._ble_client.signals.reconnecting.connect(self._on_reconnecting, Qt.QueuedConnection)
         self._ble_client.signals.data_received.connect(self._on_data_received, Qt.QueuedConnection)
+        self._ble_client.signals.diagnostics.connect(self._on_ble_diagnostics, Qt.QueuedConnection)
         self._ble_client.signals.error.connect(self._on_error, Qt.QueuedConnection)
         self._ble_client.signals.devices_found.connect(self._on_devices_found, Qt.QueuedConnection)
         self._ble_client.signals.command_sent.connect(self._on_command_sent, Qt.QueuedConnection)
@@ -182,6 +192,8 @@ class MainWindow(QMainWindow):
         self.control_panel.connect_requested.connect(self._on_connect)
         self.control_panel.disconnect_requested.connect(self._on_disconnect)
         self.control_panel.command_requested.connect(self._on_send_command)
+        self.control_panel.logging_start_requested.connect(self._on_logging_start)
+        self.control_panel.logging_stop_requested.connect(self._on_logging_stop)
         self.control_panel.mode_changed.connect(self._on_mode_changed)
         self.control_panel.clear_btn.clicked.connect(self._on_clear_data)
 
@@ -206,6 +218,7 @@ class MainWindow(QMainWindow):
             self._ble_client.disconnect_device()
         elif device_index < len(self._devices):
             device = self._devices[device_index]
+            self._pending_device_kind = self._classify_device(device.name)
             self.control_panel.log(f"Connecting to {device.name}...")
             self.statusBar().showMessage(f"Connecting to {device.name}...")
             self._ble_client.connect_device(device)
@@ -214,16 +227,24 @@ class MainWindow(QMainWindow):
         self._ble_client.disconnect_device()
 
     def _on_connected(self):
+        self._disconnect_clear_timer.stop()   # 플롯 클리어 예약 취소
         self.control_panel.set_connected(True)
+        self._connected_device_kind = self._pending_device_kind or self._connected_device_kind
         self.control_panel.log("Connected!")
+        if self._connected_device_kind:
+            self.control_panel.log(f"Device role: {self._connected_device_kind}")
         self.statusBar().showMessage("Connected - Receiving data")
         self._data_parser.reset()
         self._raw_data_queue.clear()
+        # Walker 모터 상태 쿼리 — 이전 세션 상태를 GUI에 동기화
+        self._ble_client.send_command("mstatus")
 
     def _on_disconnected(self):
         self.control_panel.set_connected(False)
         self.control_panel.log("Disconnected")
         self.statusBar().showMessage("Disconnected")
+        # 3초 후에도 재연결 안 됐으면 플롯 클리어 → 데이터 없음 시각적 표시
+        self._disconnect_clear_timer.start(3000)
 
     def _on_reconnecting(self, attempt: int):
         self.statusBar().showMessage(f"Reconnecting... (attempt {attempt})")
@@ -274,20 +295,32 @@ class MainWindow(QMainWindow):
             resp = resp.strip()
             if resp.startswith('LOG_START:'):
                 fname = resp[10:]
+                self.control_panel.set_logging_status(True)
                 self.control_panel.log(f'[SD] Logging started: {fname}')
                 self.statusBar().showMessage(f'Logging: {fname}')
             elif resp.startswith('LOG_STOP:'):
                 fname = resp[9:]
+                self.control_panel.set_logging_status(False)
                 self.control_panel.log(f'[SD] Saved: {fname}')
                 self.statusBar().showMessage(f'Saved: {fname}')
             elif resp.startswith('LOG_FAIL:'):
                 reason = resp[9:]
+                self.control_panel.set_logging_status(False)
                 self.control_panel.log(f'[SD] Save FAILED: {reason}')
                 self.statusBar().showMessage(f'Save failed: {reason}')
+            elif resp == 'LOG_IDLE':
+                self.control_panel.set_logging_status(False)
+                self.control_panel.log('[SD] Logging idle')
+            elif resp == 'LOG_STOP_REQUESTED':
+                self.control_panel.log('[SD] Stop requested')
+            elif resp.startswith('DIAG:'):
+                self.control_panel.log(f'[FW] {resp}')
             elif resp == 'MOTORS_ON':
                 self.control_panel.log('[FW] Motors ENABLED')
+                self.realtime_mode.update_status(motor_on=True)
             elif resp == 'MOTORS_OFF':
                 self.control_panel.log('[FW] Motors DISABLED')
+                self.realtime_mode.update_status(motor_on=False)
             else:
                 self.control_panel.log(f'[FW] {resp}')
 
@@ -304,11 +337,73 @@ class MainWindow(QMainWindow):
         else:
             self.control_panel.log("Not connected!")
 
+    def _classify_device(self, name: str):
+        lower = (name or "").lower()
+        if "loadcell" in lower:
+            return "loadcell"
+        if "walker" in lower or "treadmill" in lower:
+            return "treadmill"
+        return "unknown"
+
+    def _on_logging_start(self, name: str):
+        if not self._ble_client.is_connected:
+            self.control_panel.log("Not connected!")
+            self.control_panel.set_logging_status(False)
+            return
+
+        kind = self._connected_device_kind or "unknown"
+        if kind == "loadcell":
+            cmd = f"logname:{name}" if name else "log"
+        else:
+            cmd = f"save{name}" if name else "save"
+
+        self.control_panel.log(f"Logging start ({kind}): {name if name else '(auto)'}")
+        self._ble_client.send_command(cmd)
+
+    def _on_logging_stop(self):
+        if not self._ble_client.is_connected:
+            self.control_panel.log("Not connected!")
+            self.control_panel.set_logging_status(False)
+            return
+
+        kind = self._connected_device_kind or "unknown"
+        cmd = "logstop" if kind == "loadcell" else "stop_log"
+        self.control_panel.log(f"Logging stop ({kind})")
+        self._ble_client.send_command(cmd)
+
+    def _on_ble_diagnostics(self, diag: dict):
+        data_age = diag.get('data_age', 0)
+        # 상태바에 즉시 경고 — data_age > 3s면 표시
+        if data_age > 3.0:
+            self.statusBar().showMessage(
+                f"⚠ BLE data gap: {data_age:.1f}s — waiting for data..."
+            )
+        now = time.monotonic()
+        if now - self._last_diag_log < 10.0:
+            return
+        self._last_diag_log = now
+        self.control_panel.log(
+            "[BLE] "
+            f"age={data_age:.1f}s "
+            f"notify={diag.get('notify_count', 0)} "
+            f"rx={diag.get('rx_bytes', 0)}B "
+            f"buf={diag.get('buffered_batches', 0)}"
+        )
+
     def _on_mode_changed(self, mode: int):
         """Control mode change (Force/Position)"""
         self.plot_widget.set_mode(mode)
         mode_name = "Force Assist" if mode == 0 else "Position Assist"
         self.control_panel.log(f"Mode changed to: {mode_name}")
+
+    def _clear_plot_if_disconnected(self):
+        """연결 끊긴 채로 3초 경과 → 플롯 클리어해 '데이터 없음' 명확히 표시"""
+        if not self._ble_client.is_connected:
+            self._raw_data_queue.clear()
+            self.plot_widget.clear_data()
+            self._data_parser.reset()
+            self._has_new_data = False
+            self.realtime_mode.update_status(rate_hz=0.0)
 
     def _on_clear_data(self):
         self._raw_data_queue.clear()
@@ -369,6 +464,7 @@ class MainWindow(QMainWindow):
         self._data_timer.stop()
         self._plot_timer.stop()
         self._status_timer.stop()
+        self._disconnect_clear_timer.stop()
         self._ble_client.stop()
         event.accept()
 

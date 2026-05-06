@@ -3,14 +3,13 @@ ARWalker Data Parser - High Performance Version
 
 BLE로부터 수신한 패킷을 파싱하여 WalkerData 객체로 변환합니다.
 
-패킷 포맷: "SW11c<d0>n<d1>n...<d10>n"
-- 11개 데이터 (펌웨어 BleComm.cpp 순서와 일치):
-  [0-1]  L/R GCP (%)
-  [2-3]  L/R Pitch (deg)
-  [4-5]  L/R GyroY (deg/s)
-  [6-7]  L/R DesForce (N)
-  [8-9]  L/R ActForce (N)
-  [10]   Mark
+패킷 포맷: "SW9c<d0>n<d1>n...<d8>n"
+- 9개 데이터:
+  [0-1] L/R GCP (%)
+  [2-3] L/R Pitch (deg)
+  [4-5] L/R DesForce (N)
+  [6-7] L/R ActForce (N)
+  [8]   Mark
 """
 
 from dataclasses import dataclass
@@ -29,8 +28,6 @@ class WalkerData:
     # IMU
     l_pitch: float = 0.0
     r_pitch: float = 0.0
-    l_gyro_y: float = 0.0
-    r_gyro_y: float = 0.0
 
     # Force (N)
     l_des_force: float = 0.0
@@ -52,22 +49,13 @@ class WalkerDataParser:
     3. 스로틀링은 main_window 타이머 레벨에서 관리
     """
 
-    EXPECTED_COUNT = 11  # 펌웨어가 11개 데이터 전송 (mark 포함)
+    EXPECTED_COUNT = 9   # GCP×2, Pitch×2, DesForce×2, ActForce×2, Mark
 
-    # 데이터 범위 제한 (유효 범위 밖 = 스파이크)
+    # 데이터 범위 제한 (유효 범위 밖 = 즉시 기각, 패킷 깨짐 감지용)
     VALID_RANGES = {
-        'gcp': (-0.1, 1.5),
-        'pitch': (-90, 90),
-        'force': (-50, 350),
-        'gyro': (-500, 500),
-    }
-
-    # 스파이크 감지
-    MAX_CHANGE = {
-        'gcp': 0.3,
-        'pitch': 20,
-        'force': 50,
-        'gyro': 100,
+        'gcp':   (-0.1, 1.1),   # 0~1 정상, 소폭 마진
+        'pitch': (-90, 90),     # 물리적 최대 범위
+        'force': (-20, 150),    # AK60 최대 70N + 넉넉한 마진
     }
 
     def __init__(self):
@@ -75,7 +63,6 @@ class WalkerDataParser:
         self._sample_count = 0
         self._parse_errors = 0
         self._max_buffer_size = 4096
-        self._prev_data: WalkerData = None
         self._spike_count = 0
 
     @property
@@ -190,95 +177,43 @@ class WalkerDataParser:
         min_val, max_val = self.VALID_RANGES[range_key]
         return min_val <= value <= max_val
 
-    def _check_spike(self, new_val: float, old_val: float, change_key: str) -> bool:
-        """스파이크 여부 확인 (True = 스파이크 발생)"""
-        if change_key not in self.MAX_CHANGE:
-            return False
-        return abs(new_val - old_val) > self.MAX_CHANGE[change_key]
-
-    def _filter_gcp_value(self, new_val: float, old_val: float) -> float:
-        """GCP 전용 필터 - Gait Cycle Reset 허용"""
-        if not self._validate_value(new_val, 'gcp'):
-            self._spike_count += 1
-            return old_val if old_val is not None else 0.0
-
-        if old_val is None:
-            return new_val
-
-        # GCP 리셋 감지: 이전값이 높고(>0.7) 새값이 낮으면(<0.3) 정상 리셋
-        if old_val > 0.7 and new_val < 0.3:
-            return new_val
-
-        if self._check_spike(new_val, old_val, 'gcp'):
-            self._spike_count += 1
-            return old_val
-
-        return new_val
-
-    def _filter_value(self, new_val: float, old_val: float, range_key: str, change_key: str) -> float:
-        """스파이크 필터링"""
-        if not self._validate_value(new_val, range_key):
-            self._spike_count += 1
-            return old_val if old_val is not None else 0.0
-
-        if old_val is not None and self._check_spike(new_val, old_val, change_key):
-            self._spike_count += 1
-            return old_val
-
-        return new_val
-
     def _create_walker_data(self, values: List[float], count: int) -> Optional[WalkerData]:
         """값 리스트를 WalkerData 객체로 변환
 
-        펌웨어 BleComm.cpp 데이터 순서 (11개):
         [0] L_GCP  [1] R_GCP
         [2] L_Pitch  [3] R_Pitch
-        [4] L_GyroY  [5] R_GyroY
-        [6] L_DesForce  [7] R_DesForce
-        [8] L_ActForce  [9] R_ActForce
-        [10] Mark
+        [4] L_DesForce  [5] R_DesForce
+        [6] L_ActForce  [7] R_ActForce
+        [8] Mark
         """
-        if count != 11:
+        if count != self.EXPECTED_COUNT:
             return None
 
-        prev = self._prev_data
-        if prev is None:
-            filtered = WalkerData(
-                l_gcp=values[0] if self._validate_value(values[0], 'gcp') else 0.0,
-                r_gcp=values[1] if self._validate_value(values[1], 'gcp') else 0.0,
-                l_pitch=values[2] if self._validate_value(values[2], 'pitch') else 0.0,
-                r_pitch=values[3] if self._validate_value(values[3], 'pitch') else 0.0,
-                l_gyro_y=values[4] if self._validate_value(values[4], 'gyro') else 0.0,
-                r_gyro_y=values[5] if self._validate_value(values[5], 'gyro') else 0.0,
-                l_des_force=values[6] if self._validate_value(values[6], 'force') else 0.0,
-                r_des_force=values[7] if self._validate_value(values[7], 'force') else 0.0,
-                l_act_force=values[8] if self._validate_value(values[8], 'force') else 0.0,
-                r_act_force=values[9] if self._validate_value(values[9], 'force') else 0.0,
-                mark=int(values[10]),
-            )
-        else:
-            filtered = WalkerData(
-                l_gcp=self._filter_gcp_value(values[0], prev.l_gcp),
-                r_gcp=self._filter_gcp_value(values[1], prev.r_gcp),
-                l_pitch=self._filter_value(values[2], prev.l_pitch, 'pitch', 'pitch'),
-                r_pitch=self._filter_value(values[3], prev.r_pitch, 'pitch', 'pitch'),
-                l_gyro_y=self._filter_value(values[4], prev.l_gyro_y, 'gyro', 'gyro'),
-                r_gyro_y=self._filter_value(values[5], prev.r_gyro_y, 'gyro', 'gyro'),
-                l_des_force=self._filter_value(values[6], prev.l_des_force, 'force', 'force'),
-                r_des_force=self._filter_value(values[7], prev.r_des_force, 'force', 'force'),
-                l_act_force=self._filter_value(values[8], prev.l_act_force, 'force', 'force'),
-                r_act_force=self._filter_value(values[9], prev.r_act_force, 'force', 'force'),
-                mark=int(values[10]),
-            )
-        self._prev_data = filtered
-        return filtered
+        def clamp(val: float, key: str) -> float:
+            lo, hi = self.VALID_RANGES[key]
+            if val < lo or val > hi:
+                self._spike_count += 1
+                return 0.0
+            return val
+
+        data = WalkerData(
+            l_gcp=clamp(values[0], 'gcp'),
+            r_gcp=clamp(values[1], 'gcp'),
+            l_pitch=clamp(values[2], 'pitch'),
+            r_pitch=clamp(values[3], 'pitch'),
+            l_des_force=clamp(values[4], 'force'),
+            r_des_force=clamp(values[5], 'force'),
+            l_act_force=clamp(values[6], 'force'),
+            r_act_force=clamp(values[7], 'force'),
+            mark=int(values[8]),
+        )
+        return data
 
     def reset(self):
         """파서 상태 초기화"""
         self._buffer = ''
         self._sample_count = 0
         self._parse_errors = 0
-        self._prev_data = None
         self._spike_count = 0
 
 

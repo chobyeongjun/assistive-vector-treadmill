@@ -155,6 +155,7 @@ volatile bool isLogging = false;
 bool logPausedByGUI = false;
 File dataFile;
 char filename[32] = "LC_00.CSV";
+char customFilename[32] = "";  // GUI logname: 명령으로 설정, 사용 후 초기화
 
 // A7 analog trigger
 volatile uint16_t syncA7 = 0;
@@ -219,16 +220,22 @@ void adcISR() {
 void startLogging() {
     if (isLogging) return;
 
-    // 자동 파일명: LC_00.CSV ~ LC_99.CSV
-    for (int i = 0; i < 100; i++) {
-        snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
-        if (!SD.exists(filename)) break;
+    if (customFilename[0] != '\0') {
+        strncpy(filename, customFilename, sizeof(filename) - 1);
+        filename[sizeof(filename) - 1] = '\0';
+        customFilename[0] = '\0';
+    } else {
+        // 자동 파일명: LC_00.CSV ~ LC_99.CSV
+        for (int i = 0; i < 100; i++) {
+            snprintf(filename, sizeof(filename), "LC_%02d.CSV", i);
+            if (!SD.exists(filename)) break;
+        }
     }
 
     dataFile = SD.open(filename, FILE_WRITE);
     if (dataFile) {
         // ★ 헤더 먼저 쓰고 즉시 flush → 빈 파일이어도 컬럼은 남는다
-        dataFile.println("timestamp_ms,L_force_N,R_force_N,a7");
+        dataFile.println("timestamp_ms,L_force_N,R_force_N,Total_force_N,a7");
         dataFile.flush();
 
         noInterrupts();
@@ -289,6 +296,8 @@ void processLogBuffer() {
             dataFile.print(",");
             dataFile.print(rf, 3);
             dataFile.print(",");
+            dataFile.print(lf + rf, 3);
+            dataFile.print(",");
             dataFile.println(a7_val);
 
             flushCount++;
@@ -304,6 +313,21 @@ void processLogBuffer() {
         lastFlushMs = now;
     }
 
+}
+
+// ================================================================
+// [9.5] 로깅 상태 응답
+// ================================================================
+
+void sendStatus() {
+    char resp[48];
+    if (isLogging) {
+        snprintf(resp, sizeof(resp), "LOG_ACTIVE:%s", filename);
+    } else {
+        strncpy(resp, "LOG_IDLE", sizeof(resp));
+    }
+    sendBleResponse(resp);
+    Serial.println(resp);
 }
 
 // ================================================================
@@ -328,6 +352,27 @@ void handleBleCommand(String cmd) {
     }
     else if (cmd == "logstop") {
         stopLogging();
+    }
+    else if (cmd == "status") {
+        sendStatus();
+    }
+    else if (cmd.startsWith("logname:")) {
+        String name = cmd.substring(8);
+        name.trim();
+        if (name.length() == 0) {
+            customFilename[0] = '\0';
+            sendBleResponse("LOG_NAME_CLEARED");
+            Serial.println("[BLE] Custom filename cleared");
+        } else {
+            if (!name.endsWith(".CSV") && !name.endsWith(".csv")) {
+                name += ".CSV";
+            }
+            strncpy(customFilename, name.c_str(), sizeof(customFilename) - 1);
+            customFilename[sizeof(customFilename) - 1] = '\0';
+            if (isLogging) stopLogging();
+            logPausedByGUI = false;
+            startLogging();
+        }
     }
     else if (cmd == "tare") {
         // 현재 측정값 + 기존 오프셋 = 새 오프셋 (누적)
@@ -356,6 +401,10 @@ void handleSerialCmd(String cmd) {
     cmd.trim();
     if (cmd.length() == 0) return;
 
+    if (cmd == "status") {
+        sendStatus();
+        return;
+    }
     if (cmd == "log") {
         logPausedByGUI = false;
         startLogging();
@@ -365,6 +414,24 @@ void handleSerialCmd(String cmd) {
         if (isLogging) stopLogging();
         else logPausedByGUI = true;
         Serial.println("__LOG_STOPPED__");
+        return;
+    }
+    if (cmd.startsWith("logname:")) {
+        String name = cmd.substring(8);
+        name.trim();
+        if (name.length() == 0) {
+            customFilename[0] = '\0';
+            Serial.println("LOG_NAME_CLEARED");
+        } else {
+            if (!name.endsWith(".CSV") && !name.endsWith(".csv")) {
+                name += ".CSV";
+            }
+            strncpy(customFilename, name.c_str(), sizeof(customFilename) - 1);
+            customFilename[sizeof(customFilename) - 1] = '\0';
+            if (isLogging) stopLogging();
+            logPausedByGUI = false;
+            startLogging();
+        }
         return;
     }
     if (SDTransfer::handleCommand(cmd, isLogging)) return;
